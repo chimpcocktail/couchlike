@@ -2,7 +2,7 @@
 	"name": "couchlike",
 	"version": "0.0.0",
 	"description": "A common API for couch-like databases",
-	"homepage": "http://couchlike.chimpcocktail.com",
+	"homepage": "http://chimpcocktail.github.io",
 	"repository": {
 		"type": "git",
 		"url": "http://github.com/chimpcocktail/couchlike.git"

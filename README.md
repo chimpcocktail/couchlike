@@ -1,4 +1,4 @@
-[![Build Status](chimpcocktail.png)](http://www.chimpcocktail.com)
+[![Chimp Cocktail](http://chimpcocktail.github.io/chimpcocktail.png)](http://chimpcocktail.github.io)
 
 couchlike
 =========
