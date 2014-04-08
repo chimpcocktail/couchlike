@@ -1,3 +1,5 @@
+[![Build Status](chimpcocktail.png)](http://www.chimpcocktail.com)
+
 couchlike
 =========
 
