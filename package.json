@@ -1,0 +1,17 @@
+{
+	"name": "couchlike",
+	"version": "0.0.0",
+	"description": "",
+	"main": "./lib/couchlike.js",
+	"author": "Steven Barlow",
+	"scripts": {
+		"test": "mocha"
+	},
+	"dependencies": {
+
+	},
+	"devDependencies": {
+		"mocha": "1.18.x"
+	},
+	"license": "ISC"
+}
