@@ -44,6 +44,7 @@ function testWithConfig(configSpec) {
 
 var configs = {
 	'null': null,
+/*
 	couchbaseConfig: {
 		couchlike: {
 			type: couchlike.engineType.couchbase
@@ -61,6 +62,7 @@ var configs = {
 			host: 'http://localhost:5984'
 		}
 	},
+*/
 	pouchDB: {
 		couchlike: {
 			type: couchlike.engineType.pouchDB
