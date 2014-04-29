@@ -241,6 +241,7 @@ function testWithConfig(configSpec) {
 
 var configs = {
 	'null': null,
+/*
 	couchbaseConfig: {
 		couchlike: {
 			type: couchlike.engineType.couchbase
@@ -259,6 +260,7 @@ var configs = {
 			bucket: 'unit_tests'
 		}
 	},
+*/
 	pouchDB: {
 		couchlike: {
 			type: couchlike.engineType.pouchDB
