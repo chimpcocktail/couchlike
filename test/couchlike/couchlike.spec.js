@@ -45,7 +45,6 @@ function testWithConfig(configSpec) {
 		});
 
 		var testData = {
-			database: 'cochlear',
 			setDocument: {
 				_id: 'test_data',
 				foo: 'bar'
@@ -62,7 +61,7 @@ function testWithConfig(configSpec) {
 		describe('documents', function(){
 			describe('before setting #get()', function(){
 				it('should succeed', function(done){
-					couch.get(testData.setDocument._id, testData.database, function(err, document) {
+					couch.get(testData.setDocument._id, function(err, document) {
 						testData.retrievedDocument = document;
 						check(done, function() {
 							should.not.exist(err);
@@ -79,7 +78,7 @@ function testWithConfig(configSpec) {
 
 			describe('#set()', function(){
 				it('should succeed', function(done){
-					couch.set(testData.setDocument, testData.database, function(err, result) {
+					couch.set(testData.setDocument, function(err, result) {
 						check(done, function() {
 							should.not.exist(err);
 							should.exist(result);
@@ -90,7 +89,7 @@ function testWithConfig(configSpec) {
 
 			describe('after setting #get()', function(){
 				it('should succeed', function(done){
-					couch.get(testData.setDocument._id, testData.database, function(err, document) {
+					couch.get(testData.setDocument._id, function(err, document) {
 						if (document._rev) { testData.setDocument._rev = document._rev; }
 						testData.retrievedDocument = document;
 						check(done, function() {
@@ -113,7 +112,7 @@ function testWithConfig(configSpec) {
 		describe('views', function(){
 			describe('before setting views#get()', function(){
 				it('should succeed', function(done){
-					couch.views.get(testData.database, testData.designDocName, testData.viewName, function(err, view) {
+					couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
 						testData.retrievedView = view;
 						check(done, function() {
 							should.not.exist(err);
@@ -130,7 +129,7 @@ function testWithConfig(configSpec) {
 
 			describe('views#set()', function(){
 				it('should succeed', function(done){
-					couch.views.set(testData.database, testData.designDocName, testData.viewName, testData.setView.map, function(err) {
+					couch.views.set(testData.designDocName, testData.viewName, testData.setView.map, function(err) {
 						check(done, function() {
 							should.not.exist(err);
 						});
@@ -140,7 +139,7 @@ function testWithConfig(configSpec) {
 
 			describe('after setting views#get()', function(){
 				it('should succeed', function(done){
-					couch.views.get(testData.database, testData.designDocName, testData.viewName, function(err, view) {
+					couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
 						testData.retrievedView = view;
 						check(done, function() {
 							should.not.exist(err);
@@ -161,7 +160,7 @@ function testWithConfig(configSpec) {
 					var enumeration = function(document) {
 						testData.documentEnumerations += 1;
 					};
-					couch.views.getByView(testData.database, testData.designDocName, testData.viewName, {key: testData.setDocument._id}, enumeration, function(err, documents) {
+					couch.views.getByView(testData.designDocName, testData.viewName, {key: testData.setDocument._id}, enumeration, function(err, documents) {
 						testData.retrievedDocuments = documents;
 						check(done, function() {
 							should.not.exist(err);
@@ -182,7 +181,7 @@ function testWithConfig(configSpec) {
 
 			describe('views#remove()', function(){
 				it('should succeed', function(done){
-					couch.views.remove(testData.database, testData.designDocName, testData.viewName, function(err) {
+					couch.views.remove(testData.designDocName, testData.viewName, function(err) {
 						check(done, function() {
 							should.not.exist(err);
 						});
@@ -192,7 +191,7 @@ function testWithConfig(configSpec) {
 
 			describe('after removing views#get()', function(){
 				it('should succeed', function(done){
-					couch.views.get(testData.database, testData.designDocName, testData.viewName, function(err, view) {
+					couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
 						testData.retrievedView = view;
 						check(done, function() {
 							should.not.exist(err);
@@ -211,7 +210,7 @@ function testWithConfig(configSpec) {
 		describe('documents', function(){
 			describe('#remove()', function(){
 				it('should succeed', function(done){
-					couch.remove(testData.setDocument._id, testData.database, function(err) {
+					couch.remove(testData.setDocument._id, function(err) {
 						check(done, function() {
 							should.not.exist(err);
 						});
@@ -221,7 +220,7 @@ function testWithConfig(configSpec) {
 
 			describe('after removing #get()', function(){
 				it('should succeed', function(done){
-					couch.get(testData.setDocument._id, testData.database, function(err, document) {
+					couch.get(testData.setDocument._id, function(err, document) {
 						testData.retrievedDocument = document;
 						check(done, function() {
 							should.not.exist(err);
@@ -242,14 +241,13 @@ function testWithConfig(configSpec) {
 
 var configs = {
 	'null': null,
-/*
 	couchbaseConfig: {
 		couchlike: {
 			type: couchlike.engineType.couchbase
 		},
 		config: {
 			host: 'localhost:8091',
-			bucket: 'test'
+			bucket: 'unit_tests'
 		}
 	},
 	couchDB: {
@@ -257,16 +255,16 @@ var configs = {
 			type: couchlike.engineType.couchDB
 		},
 		config: {
-			host: 'http://test:password@localhost:5984'
+			host: 'http://test:password@localhost:5984',
+			bucket: 'unit_tests'
 		}
 	},
-*/
 	pouchDB: {
 		couchlike: {
 			type: couchlike.engineType.pouchDB
 		},
 		config: {
-			database: 'testdata'
+			bucket: 'unit_tests'
 		}
 	}
 };
