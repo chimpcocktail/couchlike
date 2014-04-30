@@ -1,3 +1,4 @@
+/* jshint expr:true */
 /* global emit */
 
 var should = require("should");
@@ -77,11 +78,12 @@ function testWithConfig(configSpec) {
 			});
 
 			describe('#set()', function(){
-				it('should succeed', function(done){
+				it('should succeed and update the document revision', function(done){
 					couch.set(testData.setDocument, function(err, result) {
 						check(done, function() {
 							should.not.exist(err);
 							should.exist(result);
+							result._rev.should.be.ok;
 						});
 					});
 				});
@@ -90,7 +92,6 @@ function testWithConfig(configSpec) {
 			describe('after setting #get()', function(){
 				it('should succeed', function(done){
 					couch.get(testData.setDocument._id, function(err, document) {
-						if (document._rev) { testData.setDocument._rev = document._rev; }
 						testData.retrievedDocument = document;
 						check(done, function() {
 							should.not.exist(err);
@@ -103,10 +104,72 @@ function testWithConfig(configSpec) {
 				it('should exist', function(){
 					should.exist(testData.retrievedDocument);
 				});
+				it('should have a revision', function(){
+					testData.retrievedDocument._rev.should.be.ok;
+				});
 				it('should match the set data', function(){
 					testData.retrievedDocument.should.eql(testData.setDocument);
 				});
 			});
+
+			describe('after setting #get() again', function(){
+				it('should succeed', function(done){
+					couch.get(testData.setDocument._id, function(err, document) {
+						testData.anotherRetrievedDocument = document;
+						check(done, function() {
+							should.not.exist(err);
+						});
+					});
+				});
+			});
+
+			describe('update document with #set()', function(){
+				it('should succeed', function(done){
+					testData.retrievedDocument.foo = 'rab';
+					couch.set(testData.retrievedDocument, function(err, result) {
+						check(done, function() {
+							should.not.exist(err);
+							should.exist(result);
+							result._rev.should.be.ok;
+						});
+					});
+				});
+			});
+
+			describe('after updating #get()', function(){
+				it('should succeed', function(done){
+					couch.get(testData.setDocument._id, function(err, document) {
+						testData.retrievedUpdatedDocument = document;
+						check(done, function() {
+							should.not.exist(err);
+						});
+					});
+				});
+			});
+
+			describe('…the retrieved document', function(){
+				it('should exist', function(){
+					should.exist(testData.retrievedUpdatedDocument);
+				});
+				it('should have a revision', function(){
+					testData.retrievedUpdatedDocument._rev.should.be.ok;
+				});
+				it('should match the updated data', function(){
+					testData.retrievedUpdatedDocument.should.eql(testData.retrievedDocument);
+				});
+			});
+
+			describe('re-update original document with #set()', function(){
+				it('should not succeed due to update conflicts', function(done){
+					testData.anotherRetrievedDocument.foo = 'rab';
+					couch.set(testData.anotherRetrievedDocument, function(err, result) {
+						check(done, function() {
+							should.exist(err);
+						});
+					});
+				});
+			});
+
 		});
 
 		describe('views', function(){
@@ -230,7 +293,7 @@ function testWithConfig(configSpec) {
 			});
 
 			describe('…the retrieved document', function(){
-				it('should exist', function(){
+				it('should not exist', function(){
 					should.not.exist(testData.retrievedDocument);
 				});
 			});
