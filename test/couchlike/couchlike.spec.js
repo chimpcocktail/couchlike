@@ -53,8 +53,15 @@ function testWithConfig(configSpec) {
 			designDocName: 'testDoc',
 			viewName: 'testView',
 			setView: {
-				map: function(doc) {
-					emit(doc._id, null);
+				couchbase: {
+					map: function(doc, meta) {
+						emit(meta.id, null);
+					}
+				},
+				couch: {
+					map: function(doc) {
+						emit(doc._id, null);
+					}
 				}
 			}
 		};
@@ -192,7 +199,8 @@ function testWithConfig(configSpec) {
 
 			describe('views#set()', function(){
 				it('should succeed', function(done){
-					couch.views.set(testData.designDocName, testData.viewName, testData.setView.map, function(err) {
+					var useViewMap = couch.isCouchbasey() ? testData.setView.couchbase.map : testData.setView.couch.map;
+					couch.views.set(testData.designDocName, testData.viewName, useViewMap, function(err) {
 						check(done, function() {
 							should.not.exist(err);
 						});
