@@ -1,7 +1,7 @@
 var should = require("should");
 var couchbase = require('couchbase');
-var connection = new couchbase.Connection({	host: 'localhost:8091',	bucket: 'unit_tests' });
-//var connection = new couchbase.Mock.Connection();
+//var connection = new couchbase.Connection({	host: 'localhost:8091',	bucket: 'unit_tests' });
+var connection = new couchbase.Mock.Connection();
 
 describe('issue with copying cas', function() {
 	it('should succeed', function(done){
