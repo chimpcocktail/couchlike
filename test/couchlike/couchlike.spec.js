@@ -319,7 +319,7 @@ var configs = {
 		},
 		config: {
 			host: 'localhost:8091',
-			bucket: 'unit_tests'
+			bucket: 'unit_tests_couchbase'
 		}
 	},
 	couchDB: {
@@ -339,7 +339,23 @@ var configs = {
 		config: {
 			bucket: 'unit_tests'
 		}
+	},
+/*
+	couchbaseSyncGateway: {
+		couchlike: {
+			type: couchlike.engineType.couchbaseSyncGateway
+		},
+		config: {
+			host: 'http://localhost:4984',
+			bucket: 'unit_tests',
+			couchbase: {
+				host: 'localhost:8091',
+				bucket: 'unit_tests'
+			}
+
+		}
 	}
+*/
 };
 
 for (var config in configs) {
