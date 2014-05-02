@@ -15,7 +15,7 @@
 	"dependencies": {
 		"couchbase": "1.2.x",
 		"nano": "5.7.x",
-		"pouchdb": "2.1.x"
+		"pouchdb": "2.2.x"
 	},
 	"devDependencies": {
        "mocha": "1.18.x",
