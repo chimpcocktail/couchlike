@@ -25,9 +25,16 @@ function testWithConfig(configSpec) {
 
 		this.timeout(10000);
 		var couch;
+		var changeSeq = 0;
+		var setChangeSeq = 0;
+		var updateChangeSeq = 0;
+		var changeFeed = null;
 
 		before(function() {
 			couch = new couchlike.Couchlike(configSpec.config);
+			couch.on('change', function(change) {
+				changeSeq = change.seq;
+			});
 		});
 
 		it('should be possible', function(){
@@ -84,6 +91,19 @@ function testWithConfig(configSpec) {
 				});
 			});
 
+			describe('changes#follow()', function(){
+				it('should succeed', function(done){
+					changeSeq = 0;
+					couch.changes.follow(changeSeq, function(err, feed) {
+						changeFeed = feed;
+						should.exist(changeFeed);
+						changeSeq.should.equal(0);
+						done();
+					});
+
+				});
+			});
+
 			describe('#set()', function(){
 				it('should succeed and update the document revision', function(done){
 					couch.set(testData.setDocument, function(err, result) {
@@ -92,6 +112,23 @@ function testWithConfig(configSpec) {
 							should.exist(result);
 							result._rev.should.be.ok;
 						});
+					});
+				});
+			});
+
+			describe('changes', function(){
+				it('should have been called', function(done){
+					setTimeout(function() {
+						changeSeq.should.be.greaterThan(0);
+						setChangeSeq = changeSeq;
+						done();
+					}, 3000);
+				});
+				it('#unfollow() should succeed', function(done){
+					should.exist(changeFeed);
+					couch.changes.unfollow(changeFeed, function() {
+						changeFeed = null;
+						done();
 					});
 				});
 			});
@@ -130,6 +167,18 @@ function testWithConfig(configSpec) {
 				});
 			});
 
+			describe('changes#follow()', function(){
+				it('should succeed', function(done){
+					setChangeSeq.should.be.greaterThan(0);
+					couch.changes.follow(setChangeSeq, function(err, feed) {
+						changeFeed = feed;
+						should.exist(changeFeed);
+						done();
+					});
+
+				});
+			});
+
 			describe('update document with #set()', function(){
 				it('should succeed', function(done){
 					testData.retrievedDocument.foo = 'rab';
@@ -139,6 +188,23 @@ function testWithConfig(configSpec) {
 							should.exist(result);
 							result._rev.should.be.ok;
 						});
+					});
+				});
+			});
+
+			describe('changes', function(){
+				it('should have been called', function(done){
+					setTimeout(function() {
+						changeSeq.should.be.greaterThan(setChangeSeq);
+						updateChangeSeq = changeSeq;
+						done();
+					}, 3000);
+				});
+				it('#unfollow() should succeed', function(done){
+					should.exist(changeFeed);
+					couch.changes.unfollow(changeFeed, function() {
+						changeFeed = null;
+						done();
 					});
 				});
 			});
@@ -250,12 +316,40 @@ function testWithConfig(configSpec) {
 				});
 			});
 
+			describe('changes#follow()', function(){
+				it('should succeed', function(done){
+					updateChangeSeq.should.be.greaterThan(0);
+					couch.changes.follow(updateChangeSeq, function(err, feed) {
+						changeFeed = feed;
+						should.exist(changeFeed);
+						done();
+					});
+
+				});
+			});
+
 			describe('views#remove()', function(){
 				it('should succeed', function(done){
 					couch.views.remove(testData.designDocName, testData.viewName, function(err) {
 						check(done, function() {
 							should.not.exist(err);
 						});
+					});
+				});
+			});
+
+			describe('changes', function(){
+				it('should have been called', function(done){
+					setTimeout(function() {
+						changeSeq.should.be.greaterThan(updateChangeSeq);
+						done();
+					}, 3000);
+				});
+				it('#unfollow() should succeed', function(done){
+					should.exist(changeFeed);
+					couch.changes.unfollow(changeFeed, function() {
+						changeFeed = null;
+						done();
 					});
 				});
 			});
@@ -311,8 +405,8 @@ function testWithConfig(configSpec) {
 }
 
 var configs = {
-	'null': null,
 /*
+	'null': null,
 	couchbaseConfig: {
 		couchlike: {
 			type: couchlike.engineType.couchbase
