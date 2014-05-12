@@ -316,40 +316,12 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			describe('changes#follow()', function(){
-				it('should succeed', function(done){
-					updateChangeSeq.should.be.greaterThan(0);
-					couch.changes.follow(updateChangeSeq, function(err, feed) {
-						changeFeed = feed;
-						should.exist(changeFeed);
-						done();
-					});
-
-				});
-			});
-
 			describe('views#remove()', function(){
 				it('should succeed', function(done){
 					couch.views.remove(testData.designDocName, testData.viewName, function(err) {
 						check(done, function() {
 							should.not.exist(err);
 						});
-					});
-				});
-			});
-
-			describe('changes', function(){
-				it('should have been called', function(done){
-					setTimeout(function() {
-						changeSeq.should.be.greaterThan(updateChangeSeq);
-						done();
-					}, 3000);
-				});
-				it('#unfollow() should succeed', function(done){
-					should.exist(changeFeed);
-					couch.changes.unfollow(changeFeed, function() {
-						changeFeed = null;
-						done();
 					});
 				});
 			});
@@ -373,12 +345,40 @@ function testWithConfig(configSpec) {
 		});
 
 		describe('documents', function(){
+			describe('changes#follow()', function(){
+				it('should succeed', function(done){
+					updateChangeSeq.should.be.greaterThan(0);
+					couch.changes.follow(updateChangeSeq, function(err, feed) {
+						changeFeed = feed;
+						should.exist(changeFeed);
+						done();
+					});
+
+				});
+			});
+
 			describe('#remove()', function(){
 				it('should succeed', function(done){
 					couch.remove(testData.setDocument._id, function(err) {
 						check(done, function() {
 							should.not.exist(err);
 						});
+					});
+				});
+			});
+
+			describe('changes', function(){
+				it('should have been called', function(done){
+					setTimeout(function() {
+						changeSeq.should.be.greaterThan(updateChangeSeq);
+						done();
+					}, 3000);
+				});
+				it('#unfollow() should succeed', function(done){
+					should.exist(changeFeed);
+					couch.changes.unfollow(changeFeed, function() {
+						changeFeed = null;
+						done();
 					});
 				});
 			});
