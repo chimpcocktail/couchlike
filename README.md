@@ -3,7 +3,7 @@
 couchlike
 =========
 
-[![Build Status](https://travis-ci.org/chimpcocktail/couchlike.png)](https://travis-ci.org/chimpcocktail/couchlike)
+[![Build Status](http://img.shields.io/travis/chimpcocktail/couchlike.svg?style=flat)](https://travis-ci.org/chimpcocktail/couchlike) [![npm](http://img.shields.io/npm/v/couchlike.svg?style=flat)](https://www.npmjs.org/package/couchlike) [![npm downloads](http://img.shields.io/npm/dm/couchlike.svg?style=flat)](https://www.npmjs.org/package/couchlike)
 
 Version 0.0.4 [(history)](CHANGELOG.md)
 
