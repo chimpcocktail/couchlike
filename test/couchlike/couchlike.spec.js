@@ -1,6 +1,8 @@
 /* jshint expr:true */
 /* global emit */
 
+var nconf = require("nconf").argv().env();
+var isCiEnvironment = nconf.get('CI');
 var should = require("should");
 var couchlike = require('./../../lib/couchlike.js');
 
@@ -404,10 +406,12 @@ function testWithConfig(configSpec) {
 	});
 }
 
-var configs = {
-/*
-	'null': null,
-	couchbaseConfig: {
+var configs = {};
+if (nconf.get('TEST_NULL')) {
+	configs['null'] = null;
+}
+if (nconf.get('TEST_COUCHBASE')) {
+	configs.couchbaseConfig = {
 		couchlike: {
 			type: couchlike.engineType.couchbase
 		},
@@ -415,8 +419,10 @@ var configs = {
 			host: 'localhost:8091',
 			bucket: 'unit_tests_couchbase'
 		}
-	},
-	couchDB: {
+	};
+}
+if (nconf.get('TEST_COUCHDB')) {
+	configs.couchDB = {
 		couchlike: {
 			type: couchlike.engineType.couchDB
 		},
@@ -424,18 +430,20 @@ var configs = {
 			host: 'http://test:password@localhost:5984',
 			bucket: 'unit_tests'
 		}
-	},
-*/
-	pouchDB: {
+	};
+}
+if (nconf.get('TEST_POUCHDB')) {
+	configs.pouchDB = {
 		couchlike: {
 			type: couchlike.engineType.pouchDB
 		},
 		config: {
 			bucket: 'unit_tests'
 		}
-	},
-/*
-	couchbaseSyncGateway: {
+	};
+}
+if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
+	configs.couchbaseSyncGateway = {
 		couchlike: {
 			type: couchlike.engineType.couchbaseSyncGateway
 		},
@@ -448,9 +456,8 @@ var configs = {
 			}
 
 		}
-	}
-*/
-};
+	};
+}
 
 for (var config in configs) {
 	var test = {name: config, config: configs[config]};
