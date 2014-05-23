@@ -15,12 +15,12 @@
 	"dependencies": {
 		"nconf": "0.6.x",
 		"couchbase": "1.2.x",
-		"nano": "5.7.x",
+		"nano": "5.9.x",
 		"pouchdb": "2.2.x"
 	},
 	"devDependencies": {
-		"mocha": "1.18.x",
-		"should": "3.1.x",
+		"mocha": "1.19.x",
+		"should": "3.3.x",
 		"mocha-jshint": "0.0.x"
 	},
 	"license": "ISC",
