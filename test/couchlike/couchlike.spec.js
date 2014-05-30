@@ -416,7 +416,7 @@ if (nconf.get('TEST_COUCHBASE')) {
 			type: couchlike.engineType.couchbase
 		},
 		config: {
-			host: 'localhost:8091',
+			host: 'couchbase.couchlike.chimpcocktail.com',
 			bucket: 'unit_tests_couchbase'
 		}
 	};
@@ -427,7 +427,9 @@ if (nconf.get('TEST_COUCHDB')) {
 			type: couchlike.engineType.couchDB
 		},
 		config: {
-			host: 'http://test:password@localhost:5984',
+			host: 'couchdb.couchlike.chimpcocktail.com',
+			username: 'test',
+			password: 'password',
 			bucket: 'unit_tests'
 		}
 	};
@@ -448,13 +450,8 @@ if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 			type: couchlike.engineType.couchbaseSyncGateway
 		},
 		config: {
-			host: 'http://localhost:4984',
-			bucket: 'unit_tests',
-			couchbase: {
-				host: 'localhost:8091',
-				bucket: 'unit_tests'
-			}
-
+			host: 'couchbase.couchlike.chimpcocktail.com',
+			bucket: 'unit_tests'
 		}
 	};
 }
