@@ -417,6 +417,7 @@ if (nconf.get('TEST_COUCHBASE')) {
 		},
 		config: {
 			host: 'couchbase.couchlike.chimpcocktail.com',
+			password: 'password',
 			bucket: 'unit_tests_couchbase'
 		}
 	};
@@ -451,6 +452,9 @@ if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 		},
 		config: {
 			host: 'couchbase.couchlike.chimpcocktail.com',
+			username: 'test',
+			password: 'password',
+			bucketPassword: 'password',
 			bucket: 'unit_tests'
 		}
 	};
