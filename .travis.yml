@@ -2,4 +2,4 @@ language: node_js
 node_js:
   - "0.10"
 env:
-  - TEST_POUCHDB=true TEST_COUCHBASESYNCGATEWAY=true
+  - TEST_MOCK=true TEST_POUCHDB=true TEST_COUCHBASESYNCGATEWAY=true

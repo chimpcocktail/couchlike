@@ -26,14 +26,13 @@ function testWithConfig(configSpec) {
 	describe('an instance of Couchlike with config '+configSpec.name, function(){
 
 		this.timeout(10000);
-		var couch;
+		var couch = new couchlike.Couchlike(configSpec.config);
 		var changeSeq = 0;
 		var setChangeSeq = 0;
 		var updateChangeSeq = 0;
 		var changeFeed = null;
 
 		before(function() {
-			couch = new couchlike.Couchlike(configSpec.config);
 			couch.on('change', function(change) {
 				changeSeq = change.seq;
 			});
@@ -93,18 +92,20 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			describe('changes#follow()', function(){
-				it('should succeed', function(done){
-					changeSeq = 0;
-					couch.changes.follow(changeSeq, function(err, feed) {
-						changeFeed = feed;
-						should.exist(changeFeed);
-						changeSeq.should.equal(0);
-						done();
-					});
+			if (couch.capability.follow) {
+				describe('changes#follow()', function(){
+					it('should succeed', function(done){
+						changeSeq = 0;
+						couch.changes.follow(changeSeq, function(err, feed) {
+							changeFeed = feed;
+							should.exist(changeFeed);
+							changeSeq.should.equal(0);
+							done();
+						});
 
+					});
 				});
-			});
+			}
 
 			describe('#set()', function(){
 				it('should succeed and update the document revision', function(done){
@@ -118,22 +119,24 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			describe('changes', function(){
-				it('should have been called', function(done){
-					setTimeout(function() {
-						changeSeq.should.be.greaterThan(0);
-						setChangeSeq = changeSeq;
-						done();
-					}, 3000);
-				});
-				it('#unfollow() should succeed', function(done){
-					should.exist(changeFeed);
-					couch.changes.unfollow(changeFeed, function() {
-						changeFeed = null;
-						done();
+			if (couch.capability.follow) {
+				describe('changes', function(){
+					it('should have been called', function(done){
+						setTimeout(function() {
+							changeSeq.should.be.greaterThan(0);
+							setChangeSeq = changeSeq;
+							done();
+						}, 3000);
+					});
+					it('#unfollow() should succeed', function(done){
+						should.exist(changeFeed);
+						couch.changes.unfollow(changeFeed, function() {
+							changeFeed = null;
+							done();
+						});
 					});
 				});
-			});
+			}
 
 			describe('after setting #get()', function(){
 				it('should succeed', function(done){
@@ -169,17 +172,19 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			describe('changes#follow()', function(){
-				it('should succeed', function(done){
-					setChangeSeq.should.be.greaterThan(0);
-					couch.changes.follow(setChangeSeq, function(err, feed) {
-						changeFeed = feed;
-						should.exist(changeFeed);
-						done();
-					});
+			if (couch.capability.follow) {
+				describe('changes#follow()', function(){
+					it('should succeed', function(done){
+						setChangeSeq.should.be.greaterThan(0);
+						couch.changes.follow(setChangeSeq, function(err, feed) {
+							changeFeed = feed;
+							should.exist(changeFeed);
+							done();
+						});
 
+					});
 				});
-			});
+			}
 
 			describe('update document with #set()', function(){
 				it('should succeed', function(done){
@@ -194,22 +199,24 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			describe('changes', function(){
-				it('should have been called', function(done){
-					setTimeout(function() {
-						changeSeq.should.be.greaterThan(setChangeSeq);
-						updateChangeSeq = changeSeq;
-						done();
-					}, 3000);
-				});
-				it('#unfollow() should succeed', function(done){
-					should.exist(changeFeed);
-					couch.changes.unfollow(changeFeed, function() {
-						changeFeed = null;
-						done();
+			if (couch.capability.follow) {
+				describe('changes', function(){
+					it('should have been called', function(done){
+						setTimeout(function() {
+							changeSeq.should.be.greaterThan(setChangeSeq);
+							updateChangeSeq = changeSeq;
+							done();
+						}, 3000);
+					});
+					it('#unfollow() should succeed', function(done){
+						should.exist(changeFeed);
+						couch.changes.unfollow(changeFeed, function() {
+							changeFeed = null;
+							done();
+						});
 					});
 				});
-			});
+			}
 
 			describe('after updating #get()', function(){
 				it('should succeed', function(done){
@@ -244,120 +251,123 @@ function testWithConfig(configSpec) {
 					});
 				});
 			});
-
 		});
 
-		describe('views', function(){
-			describe('before setting views#get()', function(){
-				it('should succeed', function(done){
-					couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
-						testData.retrievedView = view;
-						check(done, function() {
-							should.not.exist(err);
+		if (couch.capability.views) {
+			describe('views', function(){
+				describe('before setting views#get()', function(){
+					it('should succeed', function(done){
+						couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
+							testData.retrievedView = view;
+							check(done, function() {
+								should.not.exist(err);
+							});
 						});
 					});
 				});
-			});
 
-			describe('…the retrieved view', function(){
-				it('should not exist', function(){
-					should.not.exist(testData.retrievedView);
+				describe('…the retrieved view', function(){
+					it('should not exist', function(){
+						should.not.exist(testData.retrievedView);
+					});
 				});
-			});
 
-			describe('views#set()', function(){
-				it('should succeed', function(done){
-					var useViewMap = couch.isCouchbasey() ? testData.setView.couchbase.map : testData.setView.couch.map;
-					couch.views.set(testData.designDocName, testData.viewName, useViewMap, function(err) {
-						check(done, function() {
-							should.not.exist(err);
+				describe('views#set()', function(){
+					it('should succeed', function(done){
+						var useViewMap = couch.isCouchbasey() ? testData.setView.couchbase.map : testData.setView.couch.map;
+						couch.views.set(testData.designDocName, testData.viewName, useViewMap, function(err) {
+							check(done, function() {
+								should.not.exist(err);
+							});
 						});
 					});
 				});
-			});
 
-			describe('after setting views#get()', function(){
-				it('should succeed', function(done){
-					couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
-						testData.retrievedView = view;
-						check(done, function() {
-							should.not.exist(err);
+				describe('after setting views#get()', function(){
+					it('should succeed', function(done){
+						couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
+							testData.retrievedView = view;
+							check(done, function() {
+								should.not.exist(err);
+							});
 						});
 					});
 				});
-			});
 
-			describe('…the retrieved view', function(){
-				it('should exist', function(){
-					should.exist(testData.retrievedView);
+				describe('…the retrieved view', function(){
+					it('should exist', function(){
+						should.exist(testData.retrievedView);
+					});
 				});
-			});
 
-			describe('views#getByView()', function(){
-				it('should succeed', function(done){
-					testData.documentEnumerations = 0;
-					var enumeration = function(document) {
-						testData.documentEnumerations += 1;
-					};
-					couch.views.getByView(testData.designDocName, testData.viewName, {key: testData.setDocument._id}, enumeration, function(err, documents) {
-						testData.retrievedDocuments = documents;
-						check(done, function() {
-							should.not.exist(err);
+				describe('views#getByView()', function(){
+					it('should succeed', function(done){
+						testData.documentEnumerations = 0;
+						var enumeration = function(document) {
+							testData.documentEnumerations += 1;
+						};
+						couch.views.getByView(testData.designDocName, testData.viewName, {key: testData.setDocument._id}, enumeration, function(err, documents) {
+							testData.retrievedDocuments = documents;
+							check(done, function() {
+								should.not.exist(err);
+							});
 						});
 					});
 				});
-			});
 
-			describe('…the retrieved documents', function(){
-				it('should exist', function(){
-					should.exist(testData.retrievedDocuments);
+				describe('…the retrieved documents', function(){
+					it('should exist', function(){
+						should.exist(testData.retrievedDocuments);
+					});
+					it('should be a single document in an array', function(){
+						testData.retrievedDocuments.should.be.an.Array.and.have.length(1);
+						testData.documentEnumerations.should.eql(1);
+					});
 				});
-				it('should be a single document in an array', function(){
-					testData.retrievedDocuments.should.be.an.Array.and.have.length(1);
-					testData.documentEnumerations.should.eql(1);
-				});
-			});
 
-			describe('views#remove()', function(){
-				it('should succeed', function(done){
-					couch.views.remove(testData.designDocName, testData.viewName, function(err) {
-						check(done, function() {
-							should.not.exist(err);
+				describe('views#remove()', function(){
+					it('should succeed', function(done){
+						couch.views.remove(testData.designDocName, testData.viewName, function(err) {
+							check(done, function() {
+								should.not.exist(err);
+							});
 						});
 					});
 				});
-			});
 
-			describe('after removing views#get()', function(){
-				it('should succeed', function(done){
-					couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
-						testData.retrievedView = view;
-						check(done, function() {
-							should.not.exist(err);
+				describe('after removing views#get()', function(){
+					it('should succeed', function(done){
+						couch.views.get(testData.designDocName, testData.viewName, function(err, view) {
+							testData.retrievedView = view;
+							check(done, function() {
+								should.not.exist(err);
+							});
 						});
 					});
 				});
-			});
 
-			describe('…the retrieved view', function(){
-				it('should not exist', function(){
-					should.not.exist(testData.retrievedView);
-				});
-			});
-		});
-
-		describe('documents', function(){
-			describe('changes#follow()', function(){
-				it('should succeed', function(done){
-					updateChangeSeq.should.be.greaterThan(0);
-					couch.changes.follow(updateChangeSeq, function(err, feed) {
-						changeFeed = feed;
-						should.exist(changeFeed);
-						done();
+				describe('…the retrieved view', function(){
+					it('should not exist', function(){
+						should.not.exist(testData.retrievedView);
 					});
-
 				});
 			});
+		}
+
+		describe('remove documents', function(){
+			if (couch.capability.follow) {
+				describe('changes#follow()', function(){
+					it('should succeed', function(done){
+						updateChangeSeq.should.be.greaterThan(0);
+						couch.changes.follow(updateChangeSeq, function(err, feed) {
+							changeFeed = feed;
+							should.exist(changeFeed);
+							done();
+						});
+
+					});
+				});
+			}
 
 			describe('#remove()', function(){
 				it('should succeed', function(done){
@@ -369,21 +379,23 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			describe('changes', function(){
-				it('should have been called', function(done){
-					setTimeout(function() {
-						changeSeq.should.be.greaterThan(updateChangeSeq);
-						done();
-					}, 3000);
-				});
-				it('#unfollow() should succeed', function(done){
-					should.exist(changeFeed);
-					couch.changes.unfollow(changeFeed, function() {
-						changeFeed = null;
-						done();
+			if (couch.capability.follow) {
+				describe('changes', function(){
+					it('should have been called', function(done){
+						setTimeout(function() {
+							changeSeq.should.be.greaterThan(updateChangeSeq);
+							done();
+						}, 3000);
+					});
+					it('#unfollow() should succeed', function(done){
+						should.exist(changeFeed);
+						couch.changes.unfollow(changeFeed, function() {
+							changeFeed = null;
+							done();
+						});
 					});
 				});
-			});
+			}
 
 			describe('after removing #get()', function(){
 				it('should succeed', function(done){
@@ -407,7 +419,7 @@ function testWithConfig(configSpec) {
 }
 
 var configs = {};
-if (nconf.get('TEST_NULL')) {
+if (nconf.get('TEST_NULL') || nconf.get('TEST_MOCK')) {
 	configs['null'] = null;
 }
 if (nconf.get('TEST_COUCHBASE')) {
