@@ -92,7 +92,7 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			if (couch.capability.follow) {
+			if (couch.capability.changes) {
 				describe('changes#follow()', function(){
 					it('should succeed', function(done){
 						changeSeq = 0;
@@ -119,7 +119,7 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			if (couch.capability.follow) {
+			if (couch.capability.changes) {
 				describe('changes', function(){
 					it('should have been called', function(done){
 						setTimeout(function() {
@@ -172,7 +172,7 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			if (couch.capability.follow) {
+			if (couch.capability.changes) {
 				describe('changes#follow()', function(){
 					it('should succeed', function(done){
 						setChangeSeq.should.be.greaterThan(0);
@@ -199,7 +199,7 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			if (couch.capability.follow) {
+			if (couch.capability.changes) {
 				describe('changes', function(){
 					it('should have been called', function(done){
 						setTimeout(function() {
@@ -355,7 +355,7 @@ function testWithConfig(configSpec) {
 		}
 
 		describe('remove documents', function(){
-			if (couch.capability.follow) {
+			if (couch.capability.changes) {
 				describe('changes#follow()', function(){
 					it('should succeed', function(done){
 						updateChangeSeq.should.be.greaterThan(0);
@@ -379,7 +379,7 @@ function testWithConfig(configSpec) {
 				});
 			});
 
-			if (couch.capability.follow) {
+			if (couch.capability.changes) {
 				describe('changes', function(){
 					it('should have been called', function(done){
 						setTimeout(function() {
@@ -424,10 +424,8 @@ if (nconf.get('TEST_NULL') || nconf.get('TEST_MOCK')) {
 }
 if (nconf.get('TEST_COUCHBASE')) {
 	configs.couchbaseConfig = {
-		couchlike: {
-			type: couchlike.engineType.couchbase
-		},
-		config: {
+		type: couchlike.engineType.couchbase,
+		connection: {
 			host: 'couchbase.couchlike.chimpcocktail.com',
 			password: 'password',
 			bucket: 'unit_tests_couchbase'
@@ -436,10 +434,8 @@ if (nconf.get('TEST_COUCHBASE')) {
 }
 if (nconf.get('TEST_COUCHDB')) {
 	configs.couchDB = {
-		couchlike: {
-			type: couchlike.engineType.couchDB
-		},
-		config: {
+		type: couchlike.engineType.couchDB,
+		connection: {
 			host: 'couchdb.couchlike.chimpcocktail.com',
 			username: 'test',
 			password: 'password',
@@ -449,20 +445,16 @@ if (nconf.get('TEST_COUCHDB')) {
 }
 if (nconf.get('TEST_POUCHDB')) {
 	configs.pouchDB = {
-		couchlike: {
-			type: couchlike.engineType.pouchDB
-		},
-		config: {
+		type: couchlike.engineType.pouchDB,
+		connection: {
 			bucket: 'unit_tests'
 		}
 	};
 }
 if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 	configs.couchbaseSyncGateway = {
-		couchlike: {
-			type: couchlike.engineType.couchbaseSyncGateway
-		},
-		config: {
+		type: couchlike.engineType.couchbaseSyncGateway,
+		connection: {
 			host: 'couchbase.couchlike.chimpcocktail.com',
 			username: 'test',
 			password: 'password',

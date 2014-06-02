@@ -10,6 +10,7 @@
 	"main": "./lib/couchlike.js",
 	"author": "Steven Barlow",
 	"scripts": {
+		"pretest": "grunt build",
 		"test": "./node_modules/.bin/mocha"
 	},
 	"dependencies": {
@@ -21,7 +22,9 @@
 	"devDependencies": {
 		"mocha": "1.19.x",
 		"should": "3.3.x",
-		"mocha-jshint": "0.0.x"
+		"mocha-jshint": "0.0.x",
+		"grunt": "0.4.x",
+		"grunt-jsdoc": "0.4.x"
 	},
 	"license": "ISC",
 	"engines": {

@@ -1,7 +1,4 @@
-[![Chimp Cocktail](http://chimpcocktail.github.io/chimpcocktail.png)](http://chimpcocktail.github.io)
-
-couchlike
-=========
+# couchlike
 
 [![npm](http://img.shields.io/npm/v/couchlike.svg)](https://www.npmjs.org/package/couchlike) [![Build Status](http://img.shields.io/travis/chimpcocktail/couchlike.svg)](https://travis-ci.org/chimpcocktail/couchlike)
 
@@ -14,3 +11,11 @@ couchlike
 Couchlike is still very much a work in progress!
 
 The goal of couchlike is to provide a single, common api for accessing the common capability of all 'couch-like' databases. Currently that inculdes: CouchDB, Couchbase, and PouchDB.
+
+----
+
+Couchlike is a [Chimp Cocktail](http://chimpcocktail.github.io) production
+
+[![Chimp Cocktail](http://chimpcocktail.github.io/chimpcocktail.png)](http://chimpcocktail.github.io)
+
+
