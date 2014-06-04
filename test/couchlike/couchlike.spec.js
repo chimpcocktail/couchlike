@@ -42,6 +42,15 @@ function testWithConfig(configSpec) {
 			should.exist(couch);
 		});
 
+		it('should be the correct flavour of couchbasey', function(){
+			if (configSpec.config) {
+				should.exist(configSpec.config.testData);
+				couch.isCouchbasey().should.equal(configSpec.config.testData.isCouchbasey);
+			} else {
+				couch.isCouchbasey().should.be.ok; // Null is couchbasey!
+			}
+		});
+
 		describe('#ping', function() {
 			it('should succeed', function(done){
 				couch.ping(function(err, result) {
@@ -429,6 +438,9 @@ if (nconf.get('TEST_COUCHBASE')) {
 			host: 'couchbase.couchlike.chimpcocktail.com',
 			password: 'password',
 			bucket: 'unit_tests_couchbase'
+		},
+		testData: {
+			isCouchbasey: true
 		}
 	};
 }
@@ -440,6 +452,9 @@ if (nconf.get('TEST_COUCHDB')) {
 			username: 'test',
 			password: 'password',
 			bucket: 'unit_tests'
+		},
+		testData: {
+			isCouchbasey: false
 		}
 	};
 }
@@ -448,6 +463,9 @@ if (nconf.get('TEST_POUCHDB')) {
 		type: couchlike.engineType.pouchDB,
 		connection: {
 			bucket: 'unit_tests'
+		},
+		testData: {
+			isCouchbasey: false
 		}
 	};
 }
@@ -458,8 +476,10 @@ if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 			host: 'couchbase.couchlike.chimpcocktail.com',
 			username: 'test',
 			password: 'password',
-			bucketPassword: 'password',
 			bucket: 'unit_tests'
+		},
+		testData: {
+			isCouchbasey: true
 		}
 	};
 }
