@@ -4,4 +4,4 @@ node_js:
 before_install:
   npm install -g grunt-cli
 env:
-  - TEST_MOCK=true TEST_POUCHDB=true TEST_COUCHBASESYNCGATEWAY=true
+  - TEST_MOCK=true TEST_POUCHDB=true
