@@ -1,7 +1,7 @@
 couchlike Version History
 ================================
 
-v 0.0.0 - 0.0.10
+v 0.0.0 - 0.0.11
 ---------------
 
 Initial development
