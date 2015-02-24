@@ -448,7 +448,7 @@ if (nconf.get('TEST_COUCHDB')) {
 	configs.couchDB = {
 		type: couchlike.engineType.couchDB,
 		connection: {
-			host: 'couchdb.couchlike.chimpcocktail.com',
+			host: 'localhost',
 			username: 'test',
 			password: 'password',
 			bucket: 'unit_tests'
@@ -473,10 +473,11 @@ if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 	configs.couchbaseSyncGateway = {
 		type: couchlike.engineType.couchbaseSyncGateway,
 		connection: {
-			host: 'couchbase.couchlike.chimpcocktail.com',
-			username: 'test',
+			host: 'localhost',
+			username: 'atlas',
 			password: 'password',
-			bucket: 'unit_tests'
+			bucket: 'unit_tests',
+			port: 4985
 		},
 		testData: {
 			isCouchbasey: true

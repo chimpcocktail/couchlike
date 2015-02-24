@@ -27,6 +27,7 @@
         <article>
             <pre class="prettyprint source"><code>var EventEmitter = require('events').EventEmitter;
 var util = require('util');
+var async = require('async');
 var couchbase = require('couchbase');
 var defaultBatchSize = 10;
 
@@ -131,25 +132,50 @@ function queryCouchbaseView (engine, view, enumeration, callback) {
 	view.firstPage(handleQueryResponse);
 }
 
-function queryCouchDBView (db, designDocId, viewName, params, enumeration, callback) {
+function queryCouchDBView (couchlike, designDocId, viewName, params, enumeration, callback) {
 	if (!params) { params = {}; }
-	params.include_docs = true;
-	db.view(designDocId, viewName, params, function(err, body) {
+	params.include_docs = couchlike.capability && couchlike.capability.viewIncludeDocs;
+	couchlike.engine.bucket.view(designDocId, viewName, params, function(err, body) {
 		if (err) {
 			return callbackOrThrowError(err, callback);
 		} else {
 			var response = [];
-			body.rows.forEach(function(row) {
-				if (row.doc) {
-					var useDoc = row.doc.json ? row.doc.json : row.doc;
-					if (!useDoc._id && row.doc.meta) { useDoc._id = row.doc.meta.id;	}
+			if (couchlike.capability.viewIncludeDocs) {
+				if (body.rows && body.rows.forEach) {
+					body.rows.forEach(function(row) {
+						if (couchlike.capability.viewIncludeDocs && row.doc) {
+							var useDoc = row.doc.json ? row.doc.json : row.doc;
+							if (!useDoc._id && row.doc.meta) { useDoc._id = row.doc.meta.id;	}
 
-					if (enumeration) { enumeration(useDoc); }
-					if (callback) { response.push(useDoc); }
+							if (enumeration) { enumeration(useDoc); }
+							if (callback) { response.push(useDoc); }
+						}
+					});
 				}
-			});
 
-			if (callback) { callback(null, response); }
+				if (callback) { callback(null, response); }
+			} else {
+				if (body.rows && body.rows.forEach) {
+					var retrieveHandlers = [];
+
+					var addHandler = function(row) {
+						retrieveHandlers.push(function(callback) {
+							couchlike.get(row.key, function(err, document) {
+								if (enumeration) { enumeration(document); }
+								callback(err, document);
+							});
+						});
+					};
+
+					body.rows.forEach(function(row) { addHandler(row); });
+
+					async.parallelLimit(retrieveHandlers, 100, function(err, results) {
+						if (callback) { callback(err, results); }
+					});
+
+				} else if (callback) { callback(null, response); }
+			}
+
 		}
 	});
 }
@@ -173,8 +199,8 @@ function queryPouchDBView (couchlike, designDocId, viewName, params, enumeration
 	});
 }
 
-function queryCouchbaseSyncGatewayView (db, designDocId, viewName, params, enumeration, callback) {
-	queryCouchDBView(db, designDocId, viewName, params, enumeration, callback);
+function queryCouchbaseSyncGatewayView (couchlike, designDocId, viewName, params, enumeration, callback) {
+	queryCouchDBView(couchlike, designDocId, viewName, params, enumeration, callback);
 }
 
 /**
@@ -195,16 +221,15 @@ CouchlikeViews.prototype.getByView = function(designDocId, viewName, params, enu
 			queryCouchbaseView(that.couchlike.engine, useView, enumeration, callback);
 		},
 		couchDB: function() {
-			queryCouchDBView(that.couchlike.engine.bucket, designDocId, viewName, params, enumeration, callback);
+			queryCouchDBView(that.couchlike, designDocId, viewName, params, enumeration, callback);
 		},
 		pouchDB: function() {
 			queryPouchDBView(that.couchlike, designDocId, viewName, params, enumeration, callback);
 		},
 		couchbaseSyncGateway: function() {
-			if (!that.couchlike.engine.couchbase || !that.couchlike.engine.couchbase.bucket) { return callback(new Error('Cannot use views on couchbaseSyncGateway configuration with no couchbase config')); }
 			if (!params) { params = {}; }
 			params.stale = false;
-			queryCouchbaseSyncGatewayView(that.couchlike.engine.couchbase.bucket, designDocId, viewName, params, enumeration, callback);
+			queryCouchbaseSyncGatewayView(that.couchlike, designDocId, viewName, params, enumeration, callback);
 		}
 	};
 	methods[this.couchlike.config.type]();
@@ -331,11 +356,19 @@ CouchlikeViews.prototype.get = function(designDocId, viewName, callback) {
 
 function updateViewInDesignDoc(designDoc, viewName, map) {
 	var view = { map: map.toString() };
-	designDoc.views[viewName] = view;
+	if (JSON.stringify(designDoc.views[viewName]) !== JSON.stringify(view)) {
+		designDoc.views[viewName] = view;
+		return true;
+	}
+	return false;
 }
 
 function removeViewInDesignDoc(designDoc, viewName) {
-	delete designDoc.views[viewName];
+	if (designDoc.views[viewName]) {
+		delete designDoc.views[viewName];
+		return true;
+	}
+	return false;
 }
 
 /**
@@ -349,8 +382,11 @@ CouchlikeViews.prototype.set = function(designDocId, viewName, map, callback) {
 	that.couchlike.views.getDesignDoc(designDocId, function(err, result){
 		if (err) { return callbackOrThrowError(err, callback); }
 		if (!result) { result = { _id: fullDesignDocId(designDocId), language: "javascript", views: {} }; }
-		updateViewInDesignDoc(result, viewName, map);
-		that.couchlike.views.setDesignDoc(result, callback);
+		if (updateViewInDesignDoc(result, viewName, map)) {
+			that.couchlike.views.setDesignDoc(result, callback);
+		} else {
+			callback();
+		}
 	});
 };
 
@@ -365,8 +401,9 @@ CouchlikeViews.prototype.remove = function(designDocId, viewName, callback) {
 	that.couchlike.views.getDesignDoc(designDocId, function(err, result){
 		if (err) { return callbackOrThrowError(err, callback); }
 		if (!result) { return callback(); }
-		removeViewInDesignDoc(result, viewName);
-		that.couchlike.views.setDesignDoc(result, callback);
+		if (removeViewInDesignDoc(result, viewName)) {
+			that.couchlike.views.setDesignDoc(result, callback);
+		} else { callback(); }
 	});
 };
 
@@ -387,7 +424,7 @@ exports.CouchlikeViews = CouchlikeViews;
 <br clear="both">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.2.2</a> on Mon Jun 02 2014 10:29:25 GMT+1000 (EST)
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.2.2</a> on Tue Feb 24 2015 15:21:54 GMT+1100 (EST)
 </footer>
 
 <script> prettyPrint(); </script>
