@@ -473,11 +473,12 @@ if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 	configs.couchbaseSyncGateway = {
 		type: couchlike.engineType.couchbaseSyncGateway,
 		connection: {
-			host: 'localhost',
+			host: 'https://localhost',
 			username: 'atlas',
 			password: 'password',
 			bucket: 'unit_tests',
-			port: 4985
+			port: 4985,
+			strictSSL: false
 		},
 		testData: {
 			isCouchbasey: true
