@@ -428,22 +428,6 @@ function testWithConfig(configSpec) {
 }
 
 var configs = {};
-if (nconf.get('TEST_NULL') || nconf.get('TEST_MOCK')) {
-	configs['null'] = null;
-}
-if (nconf.get('TEST_COUCHBASE')) {
-	configs.couchbaseConfig = {
-		type: couchlike.engineType.couchbase,
-		connection: {
-			host: 'couchbase.couchlike.chimpcocktail.com',
-			password: 'password',
-			bucket: 'unit_tests_couchbase'
-		},
-		testData: {
-			isCouchbasey: true
-		}
-	};
-}
 if (nconf.get('TEST_COUCHDB')) {
 	configs.couchDB = {
 		type: couchlike.engineType.couchDB,
