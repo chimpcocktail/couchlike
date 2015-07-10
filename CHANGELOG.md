@@ -1,6 +1,11 @@
 couchlike Version History
 ================================
 
+v 0.1.1
+---------------
+
+Implemented PouchDB bulkGet
+
 v 0.1.0
 ---------------
 
