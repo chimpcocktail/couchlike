@@ -1,6 +1,11 @@
 couchlike Version History
 ================================
 
+v 0.1.2
+---------------
+
+Update PouchDB to 4.0.x and Node engine to 4.0.x
+
 v 0.1.1
 ---------------
 
