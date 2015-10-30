@@ -1,6 +1,6 @@
 {
 	"name": "couchlike",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "A common API for couch-like databases",
 	"homepage": "http://couchlike.chimpcocktail.com",
 	"repository": {
@@ -28,7 +28,7 @@
 	},
 	"license": "ISC",
 	"engines": {
-    	"node": "4.0.x"
+    	"node": "4.2.x"
 	},
 	"contributors": [
 		{
