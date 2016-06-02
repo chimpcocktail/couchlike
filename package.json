@@ -1,6 +1,6 @@
 {
 	"name": "couchlike",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"description": "A common API for couch-like databases",
 	"homepage": "http://couchlike.chimpcocktail.com",
 	"repository": {
@@ -14,21 +14,21 @@
 		"test": "./node_modules/.bin/mocha"
 	},
 	"dependencies": {
-    	"async": "0.9.x",
-		"nconf": "0.7.x",
-		"nano": "6.1.x",
-		"pouchdb": "4.0.x"
+    	"async": "1.5.x",
+		"nconf": "0.8.x",
+		"nano": "6.2.x",
+		"pouchdb": "5.3.x"
 	},
 	"devDependencies": {
-		"mocha": "2.2.x",
-		"should": "6.0.x",
-		"mocha-jshint": "2.2.x",
-		"grunt": "0.4.x",
-		"grunt-jsdoc": "0.5.x"
+		"mocha": "2.5.x",
+		"should": "9.0.x",
+		"mocha-jshint": "2.3.x",
+		"grunt": "1.0.x",
+		"grunt-jsdoc": "2.1.x"
 	},
 	"license": "ISC",
 	"engines": {
-    	"node": "4.2.x"
+    	"node": "6.2.x"
 	},
 	"contributors": [
 		{

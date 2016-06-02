@@ -329,7 +329,8 @@ function testWithConfig(configSpec) {
 						should.exist(testData.retrievedDocuments);
 					});
 					it('should be a single document in an array', function(){
-						testData.retrievedDocuments.should.be.an.Array.and.have.length(1);
+						testData.retrievedDocuments.should.be.an.Array;
+						testData.retrievedDocuments.should.have.length(1);
 						testData.documentEnumerations.should.eql(1);
 					});
 				});

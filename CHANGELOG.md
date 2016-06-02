@@ -1,12 +1,17 @@
 couchlike Version History
 ================================
 
+v 0.1.6
+---------------
+
+Update many dependencies.
+Update Node engine to 6.2.x
+
 v 0.1.5
 ---------------
 
 Auto detect config type based on ping response.
 Update Node engine to 4.2.x
-
 
 v 0.1.4
 ---------------

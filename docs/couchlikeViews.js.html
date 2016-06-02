@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>JSDoc: Source: couchlikeViews.js</title>
-    
+
     <script src="scripts/prettify/prettify.js"> </script>
     <script src="scripts/prettify/lang-css.js"> </script>
     <!--[if lt IE 9]>
@@ -16,20 +16,22 @@
 <body>
 
 <div id="main">
-    
+
     <h1 class="page-title">Source: couchlikeViews.js</h1>
+
     
-    
+
 
 
     
     <section>
         <article>
-            <pre class="prettyprint source"><code>var EventEmitter = require('events').EventEmitter;
+            <pre class="prettyprint source linenums"><code>var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 var async = require('async');
-var couchbase = require('couchbase');
 var defaultBatchSize = 10;
+var USE_BULK_OPERATIONS = true;
+var couchlike = require('./couchlike');
 
 /**
  * @callback GetByViewCallback
@@ -84,82 +86,48 @@ function callbackOrThrowError(err, callback) {
 	}
 }
 
-function couchbaseView(engine, designDocId, viewName) {
-	var defaultSettings = {
-		limit: defaultBatchSize,
-		include_docs : true,
-		stale: false
-	};
-	return engine.view(designDocId, viewName, defaultSettings);
-}
-
-function couchbaseViewWithParams (engine, designDocId, viewName, params) {
-	var useView = couchbaseView(engine, designDocId, viewName);
-	return (useView && params) ? useView.clone(params) : useView;
-}
-
-function queryCouchbaseView (engine, view, enumeration, callback) {
-	var response = [];
-
-	var handleResults = function(results) {
-		if (results) {
-			results.forEach(function(result) {
-				if (result.doc && result.doc.json && result.doc.meta) {
-					var retrievedDoc = result.doc.json;
-					if (!retrievedDoc._id) { retrievedDoc._id = result.doc.meta.id;	}
-//					if (FALSE! && !retrievedDoc._rev) { retrievedDoc._rev = WHAT?;	} // Currently no way to retrieve cas from views!
-					if (enumeration) { enumeration(result.doc.json); }
-					if (callback) { response.push(result.doc.json); }
-				}
-			});
-		}
-	};
-
-	var handleQueryResponse = function(err, results, paginator) {
-		var doHandleQueryResponse = function(err, results) {
-			if (err) { return callbackOrThrowError(err, callback); }
-			handleResults(results);
-			if (paginator && paginator.hasNext) {
-				if (paginator.hasNext()) {
-					paginator.next(doHandleQueryResponse);
-				} else if (callback) {
-					callback(null, response);
-				}
-			}
-		};
-		doHandleQueryResponse(err, results);
-	};
-	view.firstPage(handleQueryResponse);
-}
-
 function queryCouchDBView (couchlike, designDocId, viewName, params, enumeration, callback) {
 	if (!params) { params = {}; }
-	params.include_docs = couchlike.capability && couchlike.capability.viewIncludeDocs;
+	params.include_docs = couchlike.capability &amp;&amp; couchlike.capability.viewIncludeDocs;
 	couchlike.engine.bucket.view(designDocId, viewName, params, function(err, body) {
-		if (err) {
-			return callbackOrThrowError(err, callback);
-		} else {
-			var response = [];
-			if (couchlike.capability.viewIncludeDocs) {
-				if (body.rows && body.rows.forEach) {
-					body.rows.forEach(function(row) {
-						if (couchlike.capability.viewIncludeDocs && row.doc) {
-							var useDoc = row.doc.json ? row.doc.json : row.doc;
-							if (!useDoc._id && row.doc.meta) { useDoc._id = row.doc.meta.id;	}
+		if (err) { return callbackOrThrowError(err, callback); }
 
-							if (enumeration) { enumeration(useDoc); }
-							if (callback) { response.push(useDoc); }
+		var respondFromRows = function(rowsObject) {
+			var response = [];
+			if (rowsObject &amp;&amp; rowsObject.rows &amp;&amp; rowsObject.rows.forEach) {
+				rowsObject.rows.forEach(function(row) {
+					if (row &amp;&amp; row.doc) {
+						var useDoc = row.doc.json ? row.doc.json : row.doc;
+						if (!useDoc._id &amp;&amp; row.doc.meta) { useDoc._id = row.doc.meta.id;	}
+
+						if (enumeration) { enumeration(useDoc); }
+						if (callback) { response.push(useDoc); }
+					}
+				});
+			}
+			if (callback) { callback(null, response); }
+		};
+
+		if (couchlike.capability.viewIncludeDocs) {
+			respondFromRows(body);
+		} else {
+			if (body.rows &amp;&amp; body.rows.forEach) {
+				if (USE_BULK_OPERATIONS) {
+					var retrieveIds = [];
+					body.rows.forEach(function(row) {
+						if (row &amp;&amp; row.id &amp;&amp; row.id.indexOf('_sync') &lt; 0) {
+							retrieveIds.push(row.id);
 						}
 					});
-				}
-
-				if (callback) { callback(null, response); }
-			} else {
-				if (body.rows && body.rows.forEach) {
+					couchlike.bulkGet(retrieveIds, function(err, result) {
+						if (err) { return callbackOrThrowError(err, callback); }
+						respondFromRows(result);
+					});
+				} else {
 					var retrieveHandlers = [];
 
 					var addHandler = function(row) {
-						if (row && row.id && row.id.indexOf('_sync') &lt; 0) {
+						if (row &amp;&amp; row.id &amp;&amp; row.id.indexOf('_sync') &lt; 0) {
 							retrieveHandlers.push(function(callback) {
 								couchlike.get(row.id, function(err, document) {
 									if (enumeration) { enumeration(document); }
@@ -174,10 +142,8 @@ function queryCouchDBView (couchlike, designDocId, viewName, params, enumeration
 					async.parallelLimit(retrieveHandlers, 100, function(err, results) {
 						if (callback) { callback(err, results); }
 					});
-
-				} else if (callback) { callback(null, response); }
-			}
-
+				}
+			} else if (callback) { callback(null, []); }
 		}
 	});
 }
@@ -214,14 +180,6 @@ function queryCouchbaseSyncGatewayView (couchlike, designDocId, viewName, params
 CouchlikeViews.prototype.getByView = function(designDocId, viewName, params, enumeration, callback) {
 	var that = this;
 	var methods = {
-		mock: function() {
-			var useView = couchbaseViewWithParams(that.couchlike.engine, designDocId, viewName, params);
-			queryCouchbaseView(that.couchlike.engine, useView, enumeration, callback);
-		},
-		couchbase: function() {
-			var useView = couchbaseViewWithParams(that.couchlike.engine, designDocId, viewName, params);
-			queryCouchbaseView(that.couchlike.engine, useView, enumeration, callback);
-		},
 		couchDB: function() {
 			queryCouchDBView(that.couchlike, designDocId, viewName, params, enumeration, callback);
 		},
@@ -234,7 +192,10 @@ CouchlikeViews.prototype.getByView = function(designDocId, viewName, params, enu
 			queryCouchbaseSyncGatewayView(that.couchlike, designDocId, viewName, params, enumeration, callback);
 		}
 	};
-	methods[this.couchlike.config.type]();
+	this.couchlike.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		methods[configType]();
+	});
 };
 
 function fullDesignDocId(designDocId) {
@@ -243,16 +204,9 @@ function fullDesignDocId(designDocId) {
 
 function designDocName(designDocId) {
 	var vals = designDocId.split('/');
-	if (vals.length === 2 && vals[0] === '_design') {
+	if (vals.length === 2 &amp;&amp; vals[0] === '_design') {
 		return vals[1];
 	} else { return null; }
-}
-
-function couchbaseGetDesignDoc(engine, designDocId, callback) {
-	engine.getDesignDoc(designDocId, function(err, result){
-		if ((err) && ((err.message === 'not_found') || (err.code === couchbase.errors.restError && (err.reason === 'deleted' || err.reason === 'missing')))) { err = null; }
-		callback(err, result);
-	});
 }
 
 function couchDBGetDesignDoc(couchlike, designDocId, callback) {
@@ -261,7 +215,7 @@ function couchDBGetDesignDoc(couchlike, designDocId, callback) {
 
 function couchbaseSyncGatewayGetDesignDoc(db, designDocId, callback) {
 	db.get('_design/'+designDocId, function(err, result){
-		if (err && (err.code === couchbase.errors.keyNotFound || err.status === 404 || err.status_code === 404)) { err = null; }
+		if (err &amp;&amp; (err.status === 404 || err.status_code === 404 || err.statusCode === 404)) { err = null; }
 		callback(err, result);
 	});
 }
@@ -275,12 +229,6 @@ function couchbaseSyncGatewayGetDesignDoc(db, designDocId, callback) {
 CouchlikeViews.prototype.getDesignDoc = function(designDocId, callback) {
 	var that = this;
 	var methods = {
-		mock: function() {
-			couchbaseGetDesignDoc(that.couchlike.engine, designDocId, callback);
-		},
-		couchbase: function() {
-			couchbaseGetDesignDoc(that.couchlike.engine, designDocId, callback);
-		},
 		couchDB: function() {
 			couchDBGetDesignDoc(that.couchlike, designDocId, callback);
 		},
@@ -288,16 +236,14 @@ CouchlikeViews.prototype.getDesignDoc = function(designDocId, callback) {
 			couchDBGetDesignDoc(that.couchlike, designDocId, callback);
 		},
 		couchbaseSyncGateway: function() {
-			if (!that.couchlike.engine.couchbase || !that.couchlike.engine.couchbase.bucket) { return callback(new Error('Cannot use views on couchbaseSyncGateway configuration with no couchbase config')); }
-			couchbaseSyncGatewayGetDesignDoc(that.couchlike.engine.couchbase.bucket, designDocId, callback);
+			couchDBGetDesignDoc(that.couchlike, designDocId, callback);
 		}
 	};
-	methods[this.couchlike.config.type]();
+	this.couchlike.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		methods[configType]();
+	});
 };
-
-function couchbaseSetDesignDoc(engine, designDoc, callback) {
-	engine.setDesignDoc(designDocName(designDoc._id), designDoc, callback);
-}
 
 function couchDBSetDesignDoc(couchlike, designDoc, callback) {
 	couchlike.set(designDoc, callback);
@@ -322,12 +268,6 @@ function couchbaseSyncGatewaySetDesignDoc(engine, designDoc, callback) {
 CouchlikeViews.prototype.setDesignDoc = function(designDoc, callback) {
 	var that = this;
 	var methods = {
-		mock: function() {
-			couchbaseSetDesignDoc(that.couchlike.engine, designDoc, callback);
-		},
-		couchbase: function() {
-			couchbaseSetDesignDoc(that.couchlike.engine, designDoc, callback);
-		},
 		couchDB: function() {
 			couchDBSetDesignDoc(that.couchlike, designDoc, callback);
 		},
@@ -335,11 +275,13 @@ CouchlikeViews.prototype.setDesignDoc = function(designDoc, callback) {
 			couchDBSetDesignDoc(that.couchlike, designDoc, callback);
 		},
 		couchbaseSyncGateway: function() {
-			if (!that.couchlike.engine.couchbase || !that.couchlike.engine.couchbase.bucket) { return callback(new Error('Cannot use views on couchbaseSyncGateway configuration with no couchbase config')); }
-			couchbaseSyncGatewaySetDesignDoc(that.couchlike.engine.couchbase, designDoc, callback);
+			couchDBSetDesignDoc(that.couchlike, designDoc, callback);
 		}
 	};
-	methods[this.couchlike.config.type]();
+	this.couchlike.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		methods[configType]();
+	});
 };
 
 /**
@@ -356,14 +298,37 @@ CouchlikeViews.prototype.get = function(designDocId, viewName, callback) {
 	});
 };
 
-function updateViewInDesignDoc(designDoc, viewName, map) {
+CouchlikeViews.prototype.eventualMapInView = function(view) {
+	var syncGatewayViewPrefix = 'function(doc,meta) { var sync = doc._sync; if (sync === undefined || meta.id.substring(0,6) == "_sync:") return; if ((sync.flags &amp; 1) || sync.deleted) return; delete doc.sync; meta.rev = sync.rev; (';
+	var syncGatewayViewSuffix = ') (doc, meta); }';
+	if (!view) { return ""; }
+	if (this.couchlike.isCouchbasey()) {
+		return syncGatewayViewPrefix + view.map.toString() + syncGatewayViewSuffix;
+	} else { return view.map.toString(); }
+};
+
+CouchlikeViews.prototype.comparableNewMapInView = function(view) {
+	return this.eventualMapInView(view).replace(/\s/g, "");
+};
+
+CouchlikeViews.prototype.comparableExistingMapInView = function(view) {
+	if (!view || !view.map) { return ""; }
+	return view.map.toString().replace(/\s/g, "");
+};
+
+CouchlikeViews.prototype.isViewChanged = function(existingView, newView) {
+	if (!existingView || !existingView.map || !newView || !newView.map ) { return true; }
+	return (this.comparableExistingMapInView(existingView) !== this.comparableNewMapInView(newView));
+};
+
+CouchlikeViews.prototype.updateViewInDesignDoc = function(designDoc, viewName, map) {
 	var view = { map: map.toString() };
-	if (JSON.stringify(designDoc.views[viewName]) !== JSON.stringify(view)) {
+	if (this.isViewChanged(designDoc.views[viewName], view)) {
 		designDoc.views[viewName] = view;
 		return true;
 	}
 	return false;
-}
+};
 
 function removeViewInDesignDoc(designDoc, viewName) {
 	if (designDoc.views[viewName]) {
@@ -383,12 +348,39 @@ CouchlikeViews.prototype.set = function(designDocId, viewName, map, callback) {
 	var that = this;
 	that.couchlike.views.getDesignDoc(designDocId, function(err, result){
 		if (err) { return callbackOrThrowError(err, callback); }
-		if (!result) { result = { _id: fullDesignDocId(designDocId), language: "javascript", views: {} }; }
-		if (updateViewInDesignDoc(result, viewName, map)) {
+		if (!result) { result = { _id: fullDesignDocId(designDocId), language: "javascript" }; }
+		if (!result.views) { result.views = {}; }
+		if (that.updateViewInDesignDoc(result, viewName, map)) {
 			that.couchlike.views.setDesignDoc(result, callback);
 		} else {
 			callback();
 		}
+	});
+};
+
+/**
+ * @desc TODO
+ * @param {SetViewCallback} callback
+ * @example
+ * TODO
+ */
+
+CouchlikeViews.prototype.setBulk = function(designDocId, views, callback) {
+	var that = this;
+	that.couchlike.views.getDesignDoc(designDocId, function(err, result){
+		if (err) { return callbackOrThrowError(err, callback); }
+		if (!result) { result = { _id: fullDesignDocId(designDocId), language: "javascript" }; }
+		if (!result.views) { result.views = {}; }
+
+		var anyChange = false;
+		for (var viewName in views) {
+			var existingView = result.views[viewName];
+			var newView = { map: views[viewName].toString() };
+			result.views[viewName] = newView;
+			anyChange = anyChange || that.isViewChanged(existingView, newView);
+		}
+		if (!anyChange) { return callback(); }
+		that.couchlike.views.setDesignDoc(result, callback);
 	});
 };
 
@@ -420,13 +412,13 @@ exports.CouchlikeViews = CouchlikeViews;
 </div>
 
 <nav>
-    <h2><a href="index.html">Index</a></h2><h3>Classes</h3><ul><li><a href="Couchlike.html">Couchlike</a></li><li><a href="CouchlikeChanges.html">CouchlikeChanges</a></li><li><a href="CouchlikeViews.html">CouchlikeViews</a></li></ul><h3>Events</h3><ul><li><a href="global.html#event:Change">Change</a></li></ul><h3>Global</h3><ul><li><a href="global.html#capability">capability</a></li><li><a href="global.html#engineType">engineType</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="Couchlike.html">Couchlike</a></li><li><a href="CouchlikeChanges.html">CouchlikeChanges</a></li><li><a href="CouchlikeViews.html">CouchlikeViews</a></li></ul><h3>Events</h3><ul><li><a href="global.html#event:Change">Change</a></li></ul><h3>Global</h3><ul><li><a href="global.html#capability">capability</a></li><li><a href="global.html#engineType">engineType</a></li></ul>
 </nav>
 
-<br clear="both">
+<br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.2.2</a> on Wed Feb 25 2015 13:43:27 GMT+1100 (EST)
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.0</a> on Thu Jun 02 2016 14:42:54 GMT+1000 (AEST)
 </footer>
 
 <script> prettyPrint(); </script>

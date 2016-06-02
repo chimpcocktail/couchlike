@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>JSDoc: Source: couchlike.js</title>
-    
+
     <script src="scripts/prettify/prettify.js"> </script>
     <script src="scripts/prettify/lang-css.js"> </script>
     <!--[if lt IE 9]>
@@ -16,21 +16,21 @@
 <body>
 
 <div id="main">
-    
+
     <h1 class="page-title">Source: couchlike.js</h1>
+
     
-    
+
 
 
     
     <section>
         <article>
-            <pre class="prettyprint source"><code>var EventEmitter = require('events').EventEmitter;
+            <pre class="prettyprint source linenums"><code>var EventEmitter = require('events').EventEmitter;
 var url = require('url');
 var util = require('util');
 var couchlikeViews = require('./couchlikeViews');
 var couchlikeChanges = require('./couchlikeChanges');
-var couchbase = require('couchbase');
 var nano = require('nano');
 var PouchDB = require('pouchdb');
 
@@ -41,10 +41,6 @@ var PouchDB = require('pouchdb');
  * @enum {string}
  */
 var engineType = {
-	/** Couchbase Mock server **/
-	mock: "mock",
-	/** Couchbase server **/
-	couchbase: "couchbase",
 	/** CouchDB server **/
 	couchDB: "couchDB",
 	/** PouchDB server **/
@@ -55,7 +51,7 @@ var engineType = {
 
 /**
  * @typedef {Object} CouchlikeCapability
- * @desc Capability of a couchbase connection
+ * @desc Capability of a couchlike connection
  * @property {boolean} changes - TODO
  * @property {boolean} views - TODO
  * @example
@@ -74,24 +70,6 @@ var capability = {
 	 * @type {CouchlikeCapability}
 	 **/
 	default: { },
-	/**
-	 * @desc Couchbase Mock couchlike capability
-	 * @type {CouchlikeCapability}
-	 **/
-	mock: {
-		changes: false,
-		views: true,
-		viewIncludeDocs: true
-	},
-	/**
-	 * @desc Couchbase couchlike capability
-	 * @type {CouchlikeCapability}
-	 **/
-	couchbase: {
-		changes: false,
-		views: false,
-		viewIncludeDocs: false
-	},
 	/**
 	 * @desc CouchDB couchlike capability
 	 * @type {CouchlikeCapability}
@@ -198,50 +176,89 @@ function copiedCouchbaseDocument(document) {
  * TODO
  */
 function Couchlike(config) {
-	this.config = config ? config : { type: engineType.mock };
+	this.config = config ? config : { type: engineType.pouchDB };
 	this.capability = capability.default;
 	if (this.config.connection) {
 		if (!this.config.connection.bucket) { this.config.connection.bucket = this.config.connection.database; }
 		if (this.config.connection.database) { delete this.config.connection.database; }
 	}
 
+	//  \/ \/ \/ \/ \/ HEARTBEAT \/ \/ \/ \/ \/
+	var that = this;
+	var HEARTBEAT_TIMEOUT = 10 * 1000; // 10 seconds
+	this.heartbeatToConfigType =function(heartbeat) {
+		var response = engineType.couchDB;
+		if (heartbeat &amp;&amp; heartbeat.vendor &amp;&amp; heartbeat.vendor.name &amp;&amp; heartbeat.vendor.name.indexOf &amp;&amp; (heartbeat.vendor.name.indexOf('Couchbase') >= 0)) { response = engineType.couchbaseSyncGateway; }
+		return response;
+	};
+
+	this.configTypeFromHeartbeat = function(callback) {
+		if (this.currentHeartbeatValid()) { return callback(null, this.heartbeatToConfigType(this.currentHeartbeat())); }
+		this.engine.request({}, function(err, heartbeat) {
+			if (err) { return callback(err); }
+			var configType = that.heartbeatToConfigType(heartbeat);
+			that.updateCurrentHeartbeat(heartbeat, configType);
+			return callback(null, configType);
+		});
+	};
+
+	this.updateCurrentHeartbeat = function(heartbeat, configType) {
+		this.doSetTypeDependentStuff(configType);
+		this.currentHeartbeat.value = heartbeat;
+		this.currentHeartbeat.setAt = Date.now();
+	};
+
+	this.currentHeartbeat = function() {
+		return this.currentHeartbeat.value;
+	};
+
+	this.currentHeartbeatValid = function() {
+		return (this.currentHeartbeat() &amp;&amp; this.currentHeartbeat.setAt &amp;&amp; (Date.now() &lt; (this.currentHeartbeat.setAt + HEARTBEAT_TIMEOUT)));
+	};
+
+	this.configType = function(callback) {
+		if (this.config.type) { return callback(null, this.config.type); }
+		return this.configTypeFromHeartbeat(callback);
+	};
+
+	this.doSetTypeDependentStuff = function(configType) {
+		that.capability = (configType === engineType.pouchDB) ? capability.pouchDB : (configType === engineType.couchbaseSyncGateway) ? capability.couchbaseSyncGateway : capability.couchDB;
+		that._isCouchbasey = (configType === engineType.couchbaseSyncGateway) ? true : false;
+	};
+
+	this.setTypeDependentStuff = function() {
+		this.configType(function(err, configType) {
+			if (err) { throw err; }
+			that.doSetTypeDependentStuff(configType);
+		});
+	};
+	//  /\ /\ /\ /\ /\ HEARTBEAT /\ /\ /\ /\ /\
+
 	this.engine = null;
-	if (this.config && this.config.type === engineType.mock) {
-		this.engine = new couchbase.Mock.Connection();
-		this.capability = capability.mock;
-	} else if (this.config && this.config.type === engineType.couchbase) {
-		if (!/^http/.test(this.config.connection.host)) { this.config.connection.host = 'http://'+this.config.connection.host; }
-		this.engine = new couchbase.Connection(this.config.connection);
-		this.capability = capability.couchbase;
-	} else if (this.config && (this.config.type === engineType.couchDB || this.config.type === engineType.couchbaseSyncGateway)) {
+	if (this.config &amp;&amp; (!this.config.type || this.config.type === engineType.couchDB || this.config.type === engineType.couchbaseSyncGateway)) {
 		if (!/^http/.test(this.config.connection.host)) { this.config.connection.host = 'http://'+this.config.connection.host; }
 		var urlConn = url.parse(this.config.connection.host);
 		urlConn.host = null;
-		if (this.config.connection.username && this.config.connection.password) { urlConn.auth = this.config.connection.username+':'+this.config.connection.password; }
+		if (this.config.connection.username &amp;&amp; this.config.connection.password) { urlConn.auth = this.config.connection.username+':'+this.config.connection.password; }
 		if (this.config.connection.port) { urlConn.port = this.config.connection.port; }
 		if (!urlConn.port) { urlConn.port = (this.config.type === engineType.couchDB) ? DEFAULT_COUCHDB_PORT : DEFAULT_COUCHBASESYNCGATEWAY_PORT; }
-		var couchDBUrl = url.format(urlConn);
-		this.engine = nano(couchDBUrl);
-		this.engine.bucket = this.engine.use(this.config.connection.bucket);
-		this.capability = capability.couchDB;
-		if (this.config.type === engineType.couchbaseSyncGateway) {
-			urlConn.auth = null;
-			if (this.config.connection.bucketPassword) { urlConn.auth = this.config.connection.bucket+':'+this.config.connection.bucketPassword; }
-			urlConn.port = DEFAULT_COUCHBASE_PORT;
-			var couchbaseUrl = url.format(urlConn);
-			this.engine.couchbase = nano(couchbaseUrl);
-			if (!this.config.connection.couchbaseBucket) { this.config.connection.couchbaseBucket = this.config.connection.bucket; }
-			this.engine.couchbase.bucket = this.engine.couchbase.use(this.config.connection.couchbaseBucket);
-			this.capability = capability.couchbaseSyncGateway;
+		var nanoConfig = { url: url.format(urlConn) };
+		if (this.config.connection.strictSSL !== (void 0)) {
+			nanoConfig.request_defaults = { strictSSL: this.config.connection.strictSSL };
+			if (!this.config.connection.strictSSL) { process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; }
+		} else if (this.config.connection.ca !== (void 0)) {
+			nanoConfig.request_defaults = { ca: this.config.connection.ca };
 		}
-	} else if (this.config && this.config.type === engineType.pouchDB) {
+		this.engine = nano(nanoConfig);
+		this.engine.bucket = this.engine.use(this.config.connection.bucket);
+	} else if (this.config &amp;&amp; this.config.type === engineType.pouchDB) {
 		this.engine = new PouchDB(this.config.connection.bucket);
-			this.capability = capability.pouchDB;
 	} else {
 		throw new Error('Unrecognised configuration');
 	}
 
-	var that = this;
+	this.setTypeDependentStuff();
+
 	this.views = new couchlikeViews.CouchlikeViews(this);
 	this.changes = new couchlikeChanges.CouchlikeChanges(this);
 	this.changes.on('change', function(change) {
@@ -251,14 +268,14 @@ function Couchlike(config) {
 
 util.inherits(Couchlike, EventEmitter);
 
-function engineTest(couch, methods, callback) {
+function engineTest(couch, methods, configType, callback) {
 	if (!couch.engine) {
 		callback(new Error('Engine not configured'));
 		return false;
-	} else if (!couch.config || !couch.config.type) {
+	} else if (!couch.config || !configType) {
 		callback(new Error('Invalid config'));
 		return false;
-	} else if (!methods[couch.config.type]) {
+	} else if (!methods[configType]) {
 		callback(new Error('Method not configured'));
 		return false;
 	} else { return true; }
@@ -285,8 +302,15 @@ function bulkDocumentsTestForSet(documents, callback) {
 	}
 }
 
+function bulkDocumentIdsTestForGet(documentIds, callback) {
+	if (!documentIds.forEach) {
+		callback(new Error('Must be an array'));
+		return false;
+	} else { return true; }
+}
+
 Couchlike.prototype.isCouchbasey = function() {
-	return (this.config && (this.config.type === engineType.mock || this.config.type === engineType.couchbase || this.config.type === engineType.couchbaseSyncGateway));
+	return this._isCouchbasey;
 };
 
 /**
@@ -298,12 +322,6 @@ Couchlike.prototype.isCouchbasey = function() {
 Couchlike.prototype.ping = function(callback) {
 	var that = this;
 	var methods = {
-		mock: function() {
-			if (callback) { callback(null, { ping: "ok" }); }
-		},
-		couchbase: function() {
-			that.engine.stats(callback);
-		},
 		couchDB: function() {
 			that.engine.request({}, callback);
 		},
@@ -314,8 +332,11 @@ Couchlike.prototype.ping = function(callback) {
 			that.engine.request({}, callback);
 		}
 	};
-	if (!engineTest(this, methods, callback)) { return null; }
-	methods[this.config.type]();
+	this.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		if (!engineTest(that, methods, configType, callback)) { return null; }
+		methods[configType]();
+	});
 };
 
 /**
@@ -327,27 +348,24 @@ Couchlike.prototype.ping = function(callback) {
  */
 Couchlike.prototype.get = function(id, callback) {
 	function parseResult(err, result) {
-		var response = (result && result.value) ? result.value : result;
+		var response = (result &amp;&amp; result.value) ? result.value : result;
 		if (err) {
 			if (callback) {
-				if (err.code === couchbase.errors.keyNotFound || err.status === 404 || err.status_code === 404) { callback(null, null); }
-				else { callback(err); }
+				var useStatusCode = err.statusCode ? err.statusCode : err.status_code ? err.status_code : err.status ? err.status : 0;
+				if (useStatusCode === 404) { return callback(null, null); }
+				// workarround for https://github.com/couchbase/sync_gateway/issues/844
+				if (useStatusCode === 500 &amp;&amp; err.reason &amp;&amp; err.reason.indexOf &amp;&amp; err.reason.indexOf('404') > 0 ) { return callback(null, null); }
+				callback(err);
 			} else { throw err; }
 		} else {
 			if (!response._id) { response._id = id;	}
-			if (result.cas && !response._rev) { response._rev = result.cas;	}
+			if (result.cas &amp;&amp; !response._rev) { response._rev = result.cas;	}
 			if (callback) { callback(null, response); }
 		}
 	}
 
 	var that = this;
 	var methods = {
-		mock: function() {
-			that.engine.get(id, parseResult);
-		},
-		couchbase: function() {
-			that.engine.get(id, parseResult);
-		},
 		couchDB: function() {
 			that.engine.bucket.get(id, parseResult);
 		},
@@ -365,13 +383,16 @@ Couchlike.prototype.get = function(id, callback) {
 			var req = {
 				db: that.config.connection.bucket,
 				path: id,
-				method: 'get'
+				method: 'GET'
 			};
 			that.engine.request(req, parseResult);
 		}
 	};
-	if (!engineTest(this, methods, callback)) { return null; }
-	methods[this.config.type]();
+	this.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		if (!engineTest(that, methods, configType, callback)) { return null; }
+		methods[configType]();
+	});
 };
 
 /**
@@ -384,25 +405,13 @@ Couchlike.prototype.get = function(id, callback) {
 Couchlike.prototype.set = function(document, callback) {
 	function parseResult(err, result) {
 		if (err) { return callback(err); }
-		if (result && result.cas) { document._rev = result.cas; }
-		else if (result && result.rev) { document._rev = result.rev; }
+		if (result &amp;&amp; result.cas) { document._rev = result.cas; }
+		else if (result &amp;&amp; result.rev) { document._rev = result.rev; }
 		if (callback) { callback(err, document); }
 	}
 
 	var that = this;
 	var methods = {
-		mock: function() {
-			var options = {
-				cas: document._rev
-			};
-			that.engine.set(document._id, copiedCouchbaseDocument(document), options, parseResult);
-		},
-		couchbase: function() {
-			var options = {
-				cas: document._rev
-			};
-			that.engine.set(document._id, copiedCouchbaseDocument(document), options, parseResult);
-		},
 		couchDB: function() {
 			that.engine.bucket.insert(document, parseResult);
 		},
@@ -421,7 +430,7 @@ Couchlike.prototype.set = function(document, callback) {
 				db: that.config.connection.bucket,
 				path: document._id,
 				body: document,
-				method: 'put'
+				method: 'PUT'
 			};
 			that.engine.request(req, function(err, result) {
 				if (result) { document._rev = result.rev; }
@@ -429,15 +438,55 @@ Couchlike.prototype.set = function(document, callback) {
 			});
 		}
 	};
-	if (!engineTest(this, methods, callback)) { return null; }
-	if (!documentTestForSet(document, callback)) { return null; }
-	methods[this.config.type]();
+	this.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		if (!engineTest(that, methods, configType, callback)) { return null; }
+		if (!documentTestForSet(document, callback)) { return null; }
+		methods[configType]();
+	});
 };
 
 /**
  * @desc TODO
- * @param {CouchlikeDocument} document - TODO
- * @param {SetCallback=} callback
+ * @param {CouchlikeDocumentIds} documentIds - TODO
+ * @param {BulkGetCallback=} callback
+ * @example
+ * TODO
+ */
+Couchlike.prototype.bulkGet = function(documentIds, callback) {
+	function parseResult(err, result) {
+/*
+		if (err) { return callback(err); }
+		if (result &amp;&amp; result.cas) { document._rev = result.cas; }
+		else if (result &amp;&amp; result.rev) { document._rev = result.rev; }
+*/
+		if (callback) { callback(err, result); }
+	}
+
+	var that = this;
+	var methods = {
+		couchDB: function() {
+			that.engine.bucket.fetch({keys: documentIds}, parseResult);
+		},
+		pouchDB: function() {
+			that.engine.allDocs({keys: documentIds, include_docs: true}, parseResult);
+		},
+		couchbaseSyncGateway: function() {
+			that.engine.bucket.fetch({keys: documentIds}, parseResult);
+		}
+	};
+	this.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		if (!engineTest(that, methods, configType, callback)) { return null; }
+		if (!bulkDocumentIdsTestForGet(documentIds, callback)) { return null; }
+		methods[configType]();
+	});
+};
+
+/**
+ * @desc TODO
+ * @param {CouchlikeDocuments} documents - TODO
+ * @param {BulkSetCallback=} callback
  * @example
  * TODO
  */
@@ -445,20 +494,14 @@ Couchlike.prototype.bulkSet = function(documents, callback) {
 	function parseResult(err, result) {
 /*
 		if (err) { return callback(err); }
-		if (result && result.cas) { document._rev = result.cas; }
-		else if (result && result.rev) { document._rev = result.rev; }
+		if (result &amp;&amp; result.cas) { document._rev = result.cas; }
+		else if (result &amp;&amp; result.rev) { document._rev = result.rev; }
 */
 		if (callback) { callback(err, result); }
 	}
 
 	var that = this;
 	var methods = {
-		mock: function() {
-			callback(new Error('Not Implemented'));
-		},
-		couchbase: function() {
-			callback(new Error('Not Implemented'));
-		},
 		couchDB: function() {
 			that.engine.bucket.bulk({docs: documents}, parseResult);
 		},
@@ -469,9 +512,12 @@ Couchlike.prototype.bulkSet = function(documents, callback) {
 			callback(new Error('Not Implemented'));
 		}
 	};
-	if (!engineTest(this, methods, callback)) { return null; }
-	if (!bulkDocumentsTestForSet(documents, callback)) { return null; }
-	methods[this.config.type]();
+	this.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		if (!engineTest(that, methods, configType, callback)) { return null; }
+		if (!bulkDocumentsTestForSet(documents, callback)) { return null; }
+		methods[configType]();
+	});
 };
 
 /**
@@ -488,12 +534,6 @@ Couchlike.prototype.remove = function(id, callback) {
 
 	var that = this;
 	var methods = {
-		mock: function() {
-			that.engine.remove(id, parseResult);
-		},
-		couchbase: function() {
-			that.engine.remove(id, parseResult);
-		},
 		couchDB: function() {
 			that.engine.bucket.get(id, function(err, result){
 				if (err) {
@@ -519,8 +559,11 @@ Couchlike.prototype.remove = function(id, callback) {
 			});
 		}
 	};
-	if (!engineTest(this, methods, callback)) { return null; }
-	methods[this.config.type]();
+	this.configType(function(err, configType) {
+		if (err) { return callback(err); }
+		if (!engineTest(that, methods, configType, callback)) { return null; }
+		methods[configType]();
+	});
 };
 
 exports.Couchlike = Couchlike;
@@ -535,13 +578,13 @@ exports.engineType = engineType;
 </div>
 
 <nav>
-    <h2><a href="index.html">Index</a></h2><h3>Classes</h3><ul><li><a href="Couchlike.html">Couchlike</a></li><li><a href="CouchlikeChanges.html">CouchlikeChanges</a></li><li><a href="CouchlikeViews.html">CouchlikeViews</a></li></ul><h3>Events</h3><ul><li><a href="global.html#event:Change">Change</a></li></ul><h3>Global</h3><ul><li><a href="global.html#capability">capability</a></li><li><a href="global.html#engineType">engineType</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="Couchlike.html">Couchlike</a></li><li><a href="CouchlikeChanges.html">CouchlikeChanges</a></li><li><a href="CouchlikeViews.html">CouchlikeViews</a></li></ul><h3>Events</h3><ul><li><a href="global.html#event:Change">Change</a></li></ul><h3>Global</h3><ul><li><a href="global.html#capability">capability</a></li><li><a href="global.html#engineType">engineType</a></li></ul>
 </nav>
 
-<br clear="both">
+<br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.2.2</a> on Wed Feb 25 2015 13:43:27 GMT+1100 (EST)
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.0</a> on Thu Jun 02 2016 14:42:54 GMT+1000 (AEST)
 </footer>
 
 <script> prettyPrint(); </script>
