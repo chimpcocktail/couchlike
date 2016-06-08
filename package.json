@@ -1,6 +1,6 @@
 {
 	"name": "couchlike",
-	"version": "0.1.6",
+	"version": "0.1.7",
 	"description": "A common API for couch-like databases",
 	"homepage": "http://couchlike.chimpcocktail.com",
 	"repository": {
@@ -17,7 +17,7 @@
     	"async": "1.5.x",
 		"nconf": "0.8.x",
 		"nano": "6.2.x",
-		"pouchdb": "5.3.x"
+		"pouchdb": "5.4.x"
 	},
 	"devDependencies": {
 		"mocha": "2.5.x",
