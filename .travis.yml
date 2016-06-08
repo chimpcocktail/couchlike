@@ -4,8 +4,7 @@ node_js:
 before_install:
   npm install -g grunt-cli
 env:
-  - TEST_POUCHDB=true
-  - CXX=g++-4.8
+  - TEST_POUCHDB=true CXX=g++-4.8
 addons:
   apt:
     sources:
