@@ -1,6 +1,11 @@
 couchlike Version History
 ================================
 
+v 0.2.0
+---------------
+
+Ability to configure with an existing PouchDB instance
+
 v 0.1.7
 ---------------
 

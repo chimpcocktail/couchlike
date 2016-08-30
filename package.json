@@ -1,6 +1,6 @@
 {
 	"name": "couchlike",
-	"version": "0.1.7",
+	"version": "0.2.0",
 	"description": "A common API for couch-like databases",
 	"homepage": "http://couchlike.chimpcocktail.com",
 	"repository": {
