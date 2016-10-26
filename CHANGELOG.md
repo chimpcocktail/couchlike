@@ -1,6 +1,12 @@
 couchlike Version History
 ================================
 
+v 0.3.0
+---------------
+
+* Use PouchDB 6.0
+* Change implementation of looksLikePouchDBInstance accordingly
+
 v 0.2.0
 ---------------
 
