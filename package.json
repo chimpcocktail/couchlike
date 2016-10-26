@@ -17,7 +17,7 @@
     	"async": "1.5.x",
 		"nconf": "0.8.x",
 		"nano": "6.2.x",
-		"pouchdb": "5.4.x"
+		"pouchdb": "6.0.x"
 	},
 	"devDependencies": {
 		"mocha": "2.5.x",
