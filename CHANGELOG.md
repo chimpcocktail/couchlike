@@ -1,6 +1,12 @@
 couchlike Version History
 ================================
 
+v 0.3.1
+---------------
+
+* bulkGet performance optimisation
+* improve connection management
+
 v 0.3.0
 ---------------
 
