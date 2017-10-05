@@ -15,6 +15,26 @@ function check(done, checkFunction) {
 	}
 }
 
+function getWinningRev(revisions) {
+	var winner;
+	var max = 0;
+	revisions.forEach(function(revision) {
+		if (!revision._deleted) {
+			// rev containing text "conflict"
+			if (revision._rev.indexOf('conflict') > 0) {
+				winner = revision._rev;
+			}
+			// // highest rev
+			// var test = parseInt(revision._rev.split('-')[0], 10);
+			// if (test > max) {
+			// 	winner = revision._rev;
+			// 	max = test;
+			// }
+		}
+	});
+	return winner;
+}
+
 describe('couchlike', function(){
 	it('should exist', function(){
 		should.exist(couchlike);
@@ -27,14 +47,41 @@ function testWithConfig(configSpec) {
 
 		this.timeout(10000);
 		var couch = new couchlike.Couchlike(configSpec.config);
+		var conflictSeq = 0;
 		var changeSeq = 0;
 		var setChangeSeq = 0;
 		var updateChangeSeq = 0;
+		var conflictChangeSeq = 0;
 		var changeFeed = null;
+
+		var testData = {
+			setDocument: {
+				_id: 'test_data',
+				foo: 'bar'
+			},
+			designDocName: 'testDoc',
+			viewName: 'testView',
+			setView: {
+				couchbase: {
+					map: function(doc, meta) {
+						emit(meta.id, null);
+					}
+				},
+				couch: {
+					map: function(doc) {
+						emit(doc._id, null);
+					}
+				}
+			}
+		};
 
 		before(function() {
 			couch.on('change', function(change) {
 				changeSeq = change.seq;
+			});
+			couch.on('conflict', function(conflict) {
+				conflictSeq = conflict.seq;
+				testData.conflictDocument = conflict;
 			});
 		});
 
@@ -62,27 +109,6 @@ function testWithConfig(configSpec) {
 			});
 		});
 
-		var testData = {
-			setDocument: {
-				_id: 'test_data',
-				foo: 'bar'
-			},
-			designDocName: 'testDoc',
-			viewName: 'testView',
-			setView: {
-				couchbase: {
-					map: function(doc, meta) {
-						emit(meta.id, null);
-					}
-				},
-				couch: {
-					map: function(doc) {
-						emit(doc._id, null);
-					}
-				}
-			}
-		};
-
 		describe('documents', function(){
 			describe('before setting #get()', function(){
 				it('should succeed', function(done){
@@ -102,10 +128,10 @@ function testWithConfig(configSpec) {
 			});
 
 			if (couch.capability.changes) {
-				describe('changes#follow()', function(){
+				describe('changes#follow() excluding deletions and with conflicts', function(){
 					it('should succeed', function(done){
 						changeSeq = 0;
-						couch.changes.follow(changeSeq, function(err, feed) {
+						couch.changes.follow(changeSeq, { excludeDeletionsAndEmitConflicts: true }, function(err, feed) {
 							changeFeed = feed;
 							should.exist(changeFeed);
 							changeSeq.should.equal(0);
@@ -182,10 +208,10 @@ function testWithConfig(configSpec) {
 			});
 
 			if (couch.capability.changes) {
-				describe('changes#follow()', function(){
+				describe('changes#follow() excluding deletions and with conflicts', function(){
 					it('should succeed', function(done){
 						setChangeSeq.should.be.greaterThan(0);
-						couch.changes.follow(setChangeSeq, function(err, feed) {
+						couch.changes.follow(setChangeSeq, { excludeDeletionsAndEmitConflicts: true }, function(err, feed) {
 							changeFeed = feed;
 							should.exist(changeFeed);
 							done();
@@ -364,12 +390,151 @@ function testWithConfig(configSpec) {
 			});
 		}
 
+		describe('conflicts', function(){
+			if (couch.capability.changes) {
+				describe('changes#follow() excluding deletions and with conflicts', function(){
+					it('should succeed', function(done){
+						conflictSeq = 0;
+						couch.changes.follow(updateChangeSeq, { excludeDeletionsAndEmitConflicts: true }, function(err, feed) {
+							changeFeed = feed;
+							should.exist(changeFeed);
+							conflictSeq.should.equal(0);
+							done();
+						});
+
+					});
+				});
+			}
+
+			describe('create a conflict with #force()', function(){
+				it('should succeed', function(done){
+					testData.anotherRetrievedDocument.foo = 'rabbar';
+					testData.anotherRetrievedDocument._rev = '1-conflict'+Math.random();
+					couch.force(testData.anotherRetrievedDocument, function(err, result) {
+						check(done, function() {
+							should.not.exist(err);
+							should.exist(result);
+							result._rev.should.be.ok;
+						});
+					});
+				});
+			});
+
+			if (couch.capability.changes) {
+				describe('conflicts', function(){
+					it('should have been called', function(done){
+						setTimeout(function() {
+							conflictSeq.should.be.greaterThan(0);
+							done();
+						}, 3000);
+					});
+				});
+			}
+
+			describe('…the conflict', function(){
+				it('should exist', function(){
+					should.exist(testData.conflictDocument);
+				});
+			});
+
+			describe('after introducing a conflict #get()', function(){
+				it('should still succeed', function(done){
+					couch.get(testData.setDocument._id, function(err, document) {
+						check(done, function() {
+							should.not.exist(err);
+						});
+					});
+				});
+			});
+
+			describe('#getRevisions()', function(){
+				it('should succeed', function(done){
+					couch.getRevisions(testData.conflictDocument.doc._id, function(err, result) {
+						check(done, function() {
+							testData.conflictRevisions = result;
+							should.not.exist(err);
+							should.exist(result);
+						});
+					});
+				});
+			});
+
+			describe('…the conflict revisions', function(){
+				it('should exist', function(){
+					should.exist(testData.conflictRevisions);
+				});
+			});
+
+			describe('…resolving the conflict with #resolve()', function(){
+				it('should work', function(done){
+					var resolution = { losers: [] };
+					var winningRev = getWinningRev(testData.conflictRevisions);
+					testData.conflictRevisions.forEach(function(revision) {
+						// if (revision._rev === winningRev) { return; } // leave winner untouched
+						if (revision._rev === winningRev) { resolution.winner = revision; } // update winner
+						else if (!revision._deleted) { resolution.losers.push(revision); }
+					});
+					couch.resolve(resolution, function(err, result) {
+						check(done, function() {
+							should.not.exist(err);
+							should.exist(result);
+						});
+					});
+				});
+			});
+
+			describe('after resolving the conflict #get()', function(){
+				it('should still succeed', function(done){
+					couch.get(testData.setDocument._id, function(err, document) {
+						testData.retrievedDocument = document;
+						check(done, function() {
+							should.not.exist(err);
+						});
+					});
+				});
+			});
+
+			// Use this test just to confirm that updating the resolved conflict winner works as expected. Removed, because it muddies whetehr the subsequent tested change event was really a result of the conflict resolution
+			// describe('after resolving the conflict update document with #set()', function(){
+			// 	it('should succeed', function(done){
+			// 		testData.retrievedDocument.foo = 'barrab';
+			// 		couch.set(testData.retrievedDocument, function(err, result) {
+			// 			check(done, function() {
+			// 				should.not.exist(err);
+			// 				should.exist(result);
+			// 				result._rev.should.be.ok;
+			// 			});
+			// 		});
+			// 	});
+			// });
+
+			if (couch.capability.changes) {
+				describe('changes', function(){
+					it('should have been called', function(done){
+						setTimeout(function() {
+							changeSeq.should.be.greaterThan(updateChangeSeq);
+							conflictChangeSeq = changeSeq;
+							done();
+						}, 3000);
+					});
+					it('#unfollow() should succeed', function(done){
+						should.exist(changeFeed);
+						couch.changes.unfollow(changeFeed, function() {
+							changeFeed = null;
+							done();
+						});
+					});
+				});
+			}
+
+		});
+
 		describe('remove documents', function(){
 			if (couch.capability.changes) {
-				describe('changes#follow()', function(){
+				describe('changes#follow() including deletions', function(){
 					it('should succeed', function(done){
-						updateChangeSeq.should.be.greaterThan(0);
-						couch.changes.follow(updateChangeSeq, function(err, feed) {
+						conflictChangeSeq.should.be.greaterThan(0);
+						couch.changes.follow(conflictChangeSeq, function(err, feed) {
 							changeFeed = feed;
 							should.exist(changeFeed);
 							done();
@@ -393,7 +558,7 @@ function testWithConfig(configSpec) {
 				describe('changes', function(){
 					it('should have been called', function(done){
 						setTimeout(function() {
-							changeSeq.should.be.greaterThan(updateChangeSeq);
+							changeSeq.should.be.greaterThan(conflictChangeSeq);
 							done();
 						}, 3000);
 					});
@@ -458,7 +623,7 @@ if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 	configs.couchbaseSyncGateway = {
 		type: couchlike.engineType.couchbaseSyncGateway,
 		connection: {
-			host: 'https://localhost',
+			host: 'http://localhost',
 			username: 'atlas',
 			password: 'password',
 			bucket: 'unit_tests',

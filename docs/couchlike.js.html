@@ -277,6 +277,9 @@ function Couchlike(config) {
 	this.changes.on('change', function(change) {
 		that.emit('change', change);
 	});
+	this.changes.on('conflict', function(conflict) {
+		that.emit('conflict', conflict);
+	});
 }
 
 util.inherits(Couchlike, EventEmitter);
@@ -352,14 +355,8 @@ Couchlike.prototype.ping = function(callback) {
 	});
 };
 
-/**
- * @desc TODO
- * @param {String} id - TODO
- * @param {GetCallback=} callback
- * @example
- * TODO
- */
-Couchlike.prototype.get = function(id, callback) {
+Couchlike.prototype.doGet = function(options, id, callback) {
+	if (!options) { options = {}; }
 	function parseResult(err, result) {
 		var response = (result &amp;&amp; result.value) ? result.value : result;
 		if (err) {
@@ -371,8 +368,16 @@ Couchlike.prototype.get = function(id, callback) {
 				callback(err);
 			} else { throw err; }
 		} else {
-			if (!response._id) { response._id = id;	}
-			if (result.cas &amp;&amp; !response._rev) { response._rev = result.cas;	}
+			if (Array.isArray(response)) {
+				response = response.map(function(row) {
+					var result = row.ok;
+					if (!result._id) { result._id = id;	}
+					return result;
+				});
+			} else {
+				if (!response._id) { response._id = id;	}
+				if (result.cas &amp;&amp; !response._rev) { response._rev = result.cas;	}
+			}
 			if (callback) { callback(null, response); }
 		}
 	}
@@ -383,7 +388,8 @@ Couchlike.prototype.get = function(id, callback) {
 			that.engine.bucket.get(id, parseResult);
 		},
 		pouchDB: function() {
-			that.engine.get(id, parseResult);
+			var pouchOptions = options.allRevisions ? { open_revs: 'all' } : {};
+			that.engine.get(id, pouchOptions, parseResult);
 		},
 		couchbaseSyncGateway: function() {
 			/*
@@ -398,6 +404,9 @@ Couchlike.prototype.get = function(id, callback) {
 				path: id,
 				method: 'GET'
 			};
+			if (options.allRevisions) {
+				req.qs = { open_revs: 'all' };
+			}
 			that.engine.request(req, parseResult);
 		}
 	};
@@ -410,12 +419,21 @@ Couchlike.prototype.get = function(id, callback) {
 
 /**
  * @desc TODO
- * @param {CouchlikeDocument} document - TODO
- * @param {SetCallback=} callback
+ * @param {String} id - TODO
+ * @param {GetCallback=} callback
  * @example
  * TODO
  */
-Couchlike.prototype.set = function(document, callback) {
+Couchlike.prototype.get = function(id, callback) {
+	this.doGet({}, id, callback);
+};
+
+Couchlike.prototype.getRevisions = function(id, callback) {
+	this.doGet({ allRevisions: true }, id, callback);
+};
+
+Couchlike.prototype.doSet = function(options, document, callback) {
+	if (!options) { options = {}; }
 	function parseResult(err, result) {
 		if (err) { return callback(err); }
 		if (result &amp;&amp; result.cas) { document._rev = result.cas; }
@@ -429,7 +447,8 @@ Couchlike.prototype.set = function(document, callback) {
 			that.engine.bucket.insert(document, parseResult);
 		},
 		pouchDB: function() {
-			that.engine.put(document, parseResult);
+			var pouchOptions = options.force ? { new_edits: false } : {};
+			that.engine.put(document, pouchOptions, parseResult);
 		},
 		couchbaseSyncGateway: function() {
 			/*
@@ -445,6 +464,7 @@ Couchlike.prototype.set = function(document, callback) {
 				body: document,
 				method: 'PUT'
 			};
+			if (options.force) { req.qs = { new_edits: false }; }
 			that.engine.request(req, function(err, result) {
 				if (result) { document._rev = result.rev; }
 				callback(err, document);
@@ -457,6 +477,21 @@ Couchlike.prototype.set = function(document, callback) {
 		if (!documentTestForSet(document, callback)) { return null; }
 		methods[configType]();
 	});
+};
+
+/**
+ * @desc TODO
+ * @param {CouchlikeDocument} document - TODO
+ * @param {SetCallback=} callback
+ * @example
+ * TODO
+ */
+Couchlike.prototype.set = function(document, callback) {
+	this.doSet({}, document, callback);
+};
+
+Couchlike.prototype.force = function(document, callback) {
+	this.doSet({ force: true }, document, callback);
 };
 
 /**
@@ -512,11 +547,6 @@ Couchlike.prototype.bulkGet = function(documentIds, callback) {
  */
 Couchlike.prototype.bulkSet = function(documents, callback) {
 	function parseResult(err, result) {
-/*
-		if (err) { return callback(err); }
-		if (result &amp;&amp; result.cas) { document._rev = result.cas; }
-		else if (result &amp;&amp; result.rev) { document._rev = result.rev; }
-*/
 		if (callback) { callback(err, result); }
 	}
 
@@ -526,10 +556,16 @@ Couchlike.prototype.bulkSet = function(documents, callback) {
 			that.engine.bucket.bulk({docs: documents}, parseResult);
 		},
 		pouchDB: function() {
-			callback(new Error('Not Implemented'));
+			that.engine.bulkDocs(documents, parseResult);
 		},
 		couchbaseSyncGateway: function() {
-			callback(new Error('Not Implemented'));
+			var req = {
+				db: that.config.connection.bucket,
+				path: '_bulk_docs',
+				body: {docs: documents},
+				method: 'POST'
+			};
+			that.engine.request(req, parseResult);
 		}
 	};
 	this.configType(function(err, configType) {
@@ -586,6 +622,18 @@ Couchlike.prototype.remove = function(id, callback) {
 	});
 };
 
+Couchlike.prototype.resolve = function(resolution, callback) {
+	var documents = resolution.losers.map(function(revision) {
+		// revision._deleted = true;
+		// return revision; // retain old data
+		return { _id: revision._id, _rev: revision._rev, _deleted: true }; // remove old data
+	});
+	if (resolution.winner) { documents.push(resolution.winner); }
+	this.bulkSet(documents, callback);
+};
+
+
+
 exports.Couchlike = Couchlike;
 exports.looksLikePouchDBInstance = looksLikePouchDBInstance;
 exports.engineType = engineType;
@@ -606,7 +654,7 @@ exports.PouchDB = PouchDB;
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.2</a> on Thu Jun 08 2017 11:54:02 GMT+1000 (AEST)
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.2</a> on Thu Oct 05 2017 16:50:38 GMT+1100 (AEDT)
 </footer>
 
 <script> prettyPrint(); </script>
