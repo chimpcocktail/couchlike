@@ -1,6 +1,12 @@
 couchlike Version History
 ================================
 
+v 0.4.0
+---------------
+
+* conflict events in changes feed
+* getRevisions, force, and resolve methods added
+
 v 0.3.1
 ---------------
 
