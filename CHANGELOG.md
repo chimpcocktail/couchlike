@@ -1,6 +1,11 @@
 couchlike Version History
 ================================
 
+v 0.5.0
+---------------
+
+* Option to directly retrieve docs and views from Couchbase on SyncGateway configurations
+
 v 0.4.0
 ---------------
 
