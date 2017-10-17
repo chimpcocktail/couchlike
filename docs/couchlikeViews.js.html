@@ -30,8 +30,10 @@
 var util = require('util');
 var async = require('async');
 var defaultBatchSize = 10;
-var USE_BULK_OPERATIONS = true;
 var couchlike = require('./couchlike');
+var couchbase = require('couchbase');
+var ViewQuery = couchbase.ViewQuery;
+
 
 /**
  * @callback GetByViewCallback
@@ -86,89 +88,80 @@ function callbackOrThrowError(err, callback) {
 	}
 }
 
+var respondFromRows = function(body, enumeration, callback) {
+	var response = [];
+	if (body &amp;&amp; body.rows &amp;&amp; body.rows.forEach) {
+		body.rows.forEach(function(row) {
+			if (row &amp;&amp; row.doc) {
+				var useDoc = row.doc.json ? row.doc.json : row.doc;
+				if (!useDoc._id &amp;&amp; row.doc.meta) { useDoc._id = row.doc.meta.id;	}
+
+				if (enumeration) { enumeration(useDoc); }
+				if (callback) { response.push(useDoc); }
+			}
+		});
+	}
+	if (callback) { callback(null, response); }
+};
+
+var couchlikeViewResponse = function(err, body, couchlike, enumeration, callback) {
+	if (err) { return callbackOrThrowError(err, callback); }
+	if (couchlike.capability.viewIncludeDocs) { respondFromRows(body, enumeration, callback); }
+	else {
+		var useRows = (body &amp;&amp; body.rows) ? body.rows : body;
+		if (useRows &amp;&amp; useRows.forEach) {
+			var retrieveIds = [];
+			useRows.forEach(function(row) {
+				if (row &amp;&amp; row.id &amp;&amp; row.id.indexOf('_sync') &lt; 0) {
+					retrieveIds.push(row.id);
+				}
+			});
+			couchlike.bulkGet(retrieveIds, function(err, result) {
+				if (err) { return callbackOrThrowError(err, callback); }
+				respondFromRows(result, enumeration, callback);
+			});
+		} else if (callback) { callback(null, []); }
+	}
+};
+
+var couchlikeViewResponseCallback = function(couchlike, enumeration, callback) {
+	return function(err, body) {
+		couchlikeViewResponse(err, body, couchlike, enumeration, callback);
+	};
+};
+
 function queryCouchDBView (couchlike, designDocId, viewName, params, enumeration, callback) {
 	if (!params) { params = {}; }
 	params.include_docs = couchlike.capability &amp;&amp; couchlike.capability.viewIncludeDocs;
-	couchlike.engine.bucket.view(designDocId, viewName, params, function(err, body) {
-		if (err) { return callbackOrThrowError(err, callback); }
-
-		var respondFromRows = function(rowsObject) {
-			var response = [];
-			if (rowsObject &amp;&amp; rowsObject.rows &amp;&amp; rowsObject.rows.forEach) {
-				rowsObject.rows.forEach(function(row) {
-					if (row &amp;&amp; row.doc) {
-						var useDoc = row.doc.json ? row.doc.json : row.doc;
-						if (!useDoc._id &amp;&amp; row.doc.meta) { useDoc._id = row.doc.meta.id;	}
-
-						if (enumeration) { enumeration(useDoc); }
-						if (callback) { response.push(useDoc); }
-					}
-				});
-			}
-			if (callback) { callback(null, response); }
-		};
-
-		if (couchlike.capability.viewIncludeDocs) {
-			respondFromRows(body);
-		} else {
-			if (body.rows &amp;&amp; body.rows.forEach) {
-				if (USE_BULK_OPERATIONS) {
-					var retrieveIds = [];
-					body.rows.forEach(function(row) {
-						if (row &amp;&amp; row.id &amp;&amp; row.id.indexOf('_sync') &lt; 0) {
-							retrieveIds.push(row.id);
-						}
-					});
-					couchlike.bulkGet(retrieveIds, function(err, result) {
-						if (err) { return callbackOrThrowError(err, callback); }
-						respondFromRows(result);
-					});
-				} else {
-					var retrieveHandlers = [];
-
-					var addHandler = function(row) {
-						if (row &amp;&amp; row.id &amp;&amp; row.id.indexOf('_sync') &lt; 0) {
-							retrieveHandlers.push(function(callback) {
-								couchlike.get(row.id, function(err, document) {
-									if (enumeration) { enumeration(document); }
-									callback(err, document);
-								});
-							});
-						}
-					};
-
-					body.rows.forEach(function(row) { addHandler(row); });
-
-					async.parallelLimit(retrieveHandlers, 100, function(err, results) {
-						if (callback) { callback(err, results); }
-					});
-				}
-			} else if (callback) { callback(null, []); }
-		}
-	});
+	couchlike.engine.bucket.view(designDocId, viewName, params, couchlikeViewResponseCallback(couchlike, enumeration, callback));
 }
 
 function queryPouchDBView (couchlike, designDocId, viewName, params, enumeration, callback) {
 	if (!params) { params = {}; }
 	params.include_docs = true;
 	var useView = designDocId+'/'+viewName;
-	couchlike.engine.query(useView, params, function(err, body) {
-		if (err) {
-			return callbackOrThrowError(err, callback);
-		} else {
-			var response = [];
-			body.rows.forEach(function(row) {
-				if (enumeration) { enumeration(row.doc); }
-				if (callback) { response.push(row.doc); }
-			});
+	couchlike.engine.query(useView, params, couchlikeViewResponseCallback(couchlike, enumeration, callback));
+}
 
-			if (callback) { callback(null, response); }
-		}
-	});
+function queryCouchbaseView (couchlike, designDocId, viewName, params, enumeration, callback) {
+	if (!params) { params = {}; }
+	var view = new couchbase.ViewQuery.from(designDocId, viewName);
+	var customOptions = {stale: false};
+	if (params.startkey) { customOptions.startkey = '"'+params.startkey+'"'; }
+	if (params.endkey) { customOptions.endkey = '"'+params.endkey+'"'; }
+	if (params.key) { customOptions.key = '"'+params.key+'"'; }
+	view.custom(customOptions);
+	couchlike.couchbaseBucket.query(view, couchlikeViewResponseCallback(couchlike, enumeration, callback));
+
+	// // under very heavy load, Couchbase tends to die with "Error: unknown error : error parsing failed". This retry can help with that!
+	// async.retry({times: 3, interval: 10000}, function(callback, results) {
+	// 	couchlike.couchbaseBucket.query(view, callback);
+	// }, couchlikeViewResponseCallback(couchlike, enumeration, callback));
 }
 
 function queryCouchbaseSyncGatewayView (couchlike, designDocId, viewName, params, enumeration, callback) {
-	queryCouchDBView(couchlike, designDocId, viewName, params, enumeration, callback);
+	if (couchlike.couchbaseBucket) { queryCouchbaseView(couchlike, designDocId, viewName, params, enumeration, callback); }
+	else { queryCouchDBView(couchlike, designDocId, viewName, params, enumeration, callback); }
 }
 
 /**
@@ -418,7 +411,7 @@ exports.CouchlikeViews = CouchlikeViews;
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.2</a> on Fri Oct 06 2017 10:35:44 GMT+1100 (AEDT)
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.2</a> on Tue Oct 17 2017 11:17:17 GMT+1100 (AEDT)
 </footer>
 
 <script> prettyPrint(); </script>

@@ -628,7 +628,10 @@ if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
 			password: 'password',
 			bucket: 'unit_tests',
 			port: 4985,
-			strictSSL: false
+			strictSSL: false,
+			direct: {
+				host: 'couchbase://127.0.0.1'
+			}
 		},
 		testData: {
 			isCouchbasey: true

@@ -35,6 +35,7 @@ var couchlikeChanges = require('./couchlikeChanges');
 var nano = require('nano');
 var PouchDB = require('pouchdb');
 var KeepAliveAgent = require('agentkeepalive');
+var couchbase = require('couchbase');
 
 const DEFAULT_MAX_SOCKETS = 100;
 
@@ -96,23 +97,15 @@ var capability = {
 	 * @desc Couchbase Sync Gateway couchlike capability
 	 * @type {CouchlikeCapability}
 	 **/
-	couchbaseSyncGateway: { // This is not working since the password was set on the mirrored bucket (https://groups.google.com/forum/#!topic/mobile-couchbase/6_S4BWW2a4I)
+	couchbaseSyncGateway: {
 		changes: true,
 		views: true,
 		viewIncludeDocs: false
 	}
 };
 
-var DEFAULT_COUCHBASE_PORT = 8092;
 var DEFAULT_COUCHDB_PORT = 5984;
 var DEFAULT_COUCHBASESYNCGATEWAY_PORT = 4984;
-
-function copiedCouchbaseDocument(document) {
-	var newDocument = JSON.parse(JSON.stringify(document));
-	delete newDocument._rev;
-	delete newDocument._id;
-	return newDocument;
-}
 
 function looksLikePouchDBInstance(thing) {
 	return thing &amp;&amp; thing.adapter &amp;&amp; thing.replicate &amp;&amp; thing.prefix === '_pouch_';
@@ -242,6 +235,7 @@ function Couchlike(config) {
 	};
 	//  /\ /\ /\ /\ /\ HEARTBEAT /\ /\ /\ /\ /\
 
+	var useAgent = new KeepAliveAgent({ maxSockets: this.config.connection.maxSockets ? this.config.connection.maxSockets : DEFAULT_MAX_SOCKETS });
 	this.engine = null;
 	if (this.config &amp;&amp; (!this.config.type || this.config.type === engineType.couchDB || this.config.type === engineType.couchbaseSyncGateway)) {
 		if (!/^http/.test(this.config.connection.host)) { this.config.connection.host = 'http://'+this.config.connection.host; }
@@ -257,7 +251,6 @@ function Couchlike(config) {
 		} else if (this.config.connection.ca !== (void 0)) {
 			nanoConfig.requestDefaults = { ca: this.config.connection.ca };
 		} else { nanoConfig.requestDefaults = {}; }
-		var useAgent = new KeepAliveAgent({	maxSockets: this.config.connection.maxSockets ? this.config.connection.maxSockets : DEFAULT_MAX_SOCKETS });
 		nanoConfig.requestDefaults.agent = useAgent;
 		this.engine = nano(nanoConfig);
 		this.engine.bucket = this.engine.use(this.config.connection.bucket);
@@ -268,6 +261,14 @@ function Couchlike(config) {
 		this.config = { type: engineType.pouchDB };
 	} else {
 		throw new Error('Unrecognised configuration');
+	}
+
+	if (this.config &amp;&amp; this.config.connection &amp;&amp; this.config.connection.direct) {
+		this.couchbase = new couchbase.Cluster(this.config.connection.direct.host);
+		this.couchbaseBucket = this.couchbase.openBucket(this.config.connection.bucket);
+		this.couchbaseBucket.operationTimeout = 100000;
+		this.couchbaseBucket.viewTimeout = 100000;
+		this.couchbaseBucket.httpAgent = useAgent;
 	}
 
 	this.setTypeDependentStuff();
@@ -283,6 +284,11 @@ function Couchlike(config) {
 }
 
 util.inherits(Couchlike, EventEmitter);
+
+Couchlike.prototype.close = function(callback) {
+	if (this.couchbaseBucket) { this.couchbaseBucket.disconnect(); }
+	if (callback) { return callback(); }
+};
 
 function engineTest(couch, methods, configType, callback) {
 	if (!couch.engine) {
@@ -355,59 +361,158 @@ Couchlike.prototype.ping = function(callback) {
 	});
 };
 
-Couchlike.prototype.doGet = function(options, id, callback) {
-	if (!options) { options = {}; }
-	function parseResult(err, result) {
+function isLocalDoc(id) {
+	return (id &amp;&amp; id.startsWith('_local/'));
+}
+
+function isDesignDoc(id) {
+	return (id &amp;&amp; id.startsWith('_design/'));
+}
+
+function isUserDoc(id) {
+	return (id &amp;&amp; id.startsWith('_user/'));
+}
+
+function isRoleDoc(id) {
+	return (id &amp;&amp; id.startsWith('_role/'));
+}
+
+function isSpecialLocalUnderscoreDoc(id) {
+	return (isLocalDoc(id) || isDesignDoc(id) || isUserDoc(id) || isRoleDoc(id));
+}
+
+// RESPONSES ============================================
+// Get
+function couchlikeResolveGetDoc(doc, useId, callback) {
+	if (!doc) { if (callback) { return callback(null, null); } else { return; }}
+	if (!doc._id) { doc._id = useId; }
+	if (doc._sync) {
+		doc._rev = doc._sync.rev;
+		delete doc._sync;
+	}
+	if (callback) { return callback(null, doc); }
+	else { return doc; }
+}
+
+function handleGetError(err, callback) {
+	if (callback) {
+		var useStatusCode = err.statusCode ? err.statusCode : err.status_code ? err.status_code : err.status ? err.status : 0;
+		if (useStatusCode === 404) { return callback(null, null); }
+		// workaround for https://github.com/couchbase/sync_gateway/issues/844
+		if (useStatusCode === 500 &amp;&amp; err.reason &amp;&amp; err.reason.indexOf &amp;&amp; err.reason.indexOf('404') > 0 ) { return callback(null, null); }
+		var couchbaseCode = err.code;
+		if (couchbaseCode === 13) { return callback(null, null); } // The key does not exist on the server
+		callback(err);
+	} else { throw err; }
+}
+
+function handleGetSuccess(result, useId, callback) {
+	if (callback) {
 		var response = (result &amp;&amp; result.value) ? result.value : result;
-		if (err) {
-			if (callback) {
-				var useStatusCode = err.statusCode ? err.statusCode : err.status_code ? err.status_code : err.status ? err.status : 0;
-				if (useStatusCode === 404) { return callback(null, null); }
-				// workarround for https://github.com/couchbase/sync_gateway/issues/844
-				if (useStatusCode === 500 &amp;&amp; err.reason &amp;&amp; err.reason.indexOf &amp;&amp; err.reason.indexOf('404') > 0 ) { return callback(null, null); }
-				callback(err);
-			} else { throw err; }
+		if (Array.isArray(response)) {
+			callback(null, response.map(function(row) { return couchlikeResolveGetDoc(row.ok, useId); }));
 		} else {
-			if (Array.isArray(response)) {
-				response = response.map(function(row) {
-					var result = row.ok;
-					if (!result._id) { result._id = id;	}
-					return result;
-				});
-			} else {
-				if (!response._id) { response._id = id;	}
-				if (result.cas &amp;&amp; !response._rev) { response._rev = result.cas;	}
-			}
-			if (callback) { callback(null, response); }
+			if (response._deleted) { return couchlikeResolveGetDoc(null, useId, callback); }
+			couchlikeResolveGetDoc(response, useId, callback);
 		}
 	}
+}
 
+function getDocCallback(id, callback) {
+	return function(err, result) {
+		if (err) { handleGetError(err, callback); }
+		else { handleGetSuccess(result, id, callback); }
+	};
+}
+
+function getBulkCallback(isCouchbase, callback) {
+	return function(err, result) {
+		if (!callback) { return; }
+		if (isCouchbase &amp;&amp; result &amp;&amp; !result.rows) {
+			var response = { rows: [] };
+			async.forEachOf(result, function(doc, key, callback) {
+				if (!doc || !doc.value) { return callback(); }
+				doc.value = couchlikeResolveGetDoc(doc.value, key);
+				response.rows.push({
+					key: doc.value._id,
+					id: doc.value._id,
+					doc: doc.value
+				});
+				callback();
+			}, function(err) {
+				callback(err, response);
+			});
+		} else { callback(err, result); }
+	};
+}
+
+// Set
+function couchlikeResolveSetDoc(doc, setResult, callback) {
+	if (setResult &amp;&amp; setResult.rev) { doc._rev = setResult.rev; }
+	if (callback) { return callback(null, doc); }
+	else { return doc; }
+}
+
+function handleSetError(err, callback) {
+	if (callback) { return callback(err); }
+	else { throw err; }
+}
+
+function handleSetSuccess(doc, setResult, callback) {
+	couchlikeResolveSetDoc(doc, setResult, callback);
+}
+
+function setDocCallback(doc, callback) {
+	return function(err, result) {
+		if (err) { handleSetError(err, callback); }
+		else { handleSetSuccess(doc, result, callback); }
+	};
+}
+
+// Generic
+function simpleResponseCallback(callback) {
+	return function(err, result) {
+		if (callback) { callback(err, result); }
+	};
+}
+
+function swallowResponseCallback(callback) {
+	return function(err) {
+		if (callback) { callback(err); }
+	};
+}
+
+Couchlike.prototype.doGet = function(options, id, callback) {
+	if (!options) { options = {}; }
 	var that = this;
 	var methods = {
 		couchDB: function() {
-			that.engine.bucket.get(id, parseResult);
+			that.engine.bucket.get(id, getDocCallback(id, callback));
 		},
 		pouchDB: function() {
 			var pouchOptions = options.allRevisions ? { open_revs: 'all' } : {};
-			that.engine.get(id, pouchOptions, parseResult);
+			that.engine.get(id, pouchOptions, getDocCallback(id, callback));
 		},
 		couchbaseSyncGateway: function() {
-			/*
-			that.engine.bucket.get(id, parseResult);
+			if (that.couchbaseBucket &amp;&amp; !options.allRevisions &amp;&amp; !isSpecialLocalUnderscoreDoc(id)) { that.couchbaseBucket.get(id, getDocCallback(id, callback)); }
+			else {
+				/*
+				that.engine.bucket.get(id, getDocCallback(id, callback));
 
-			The following is the workaround for	https://github.com/couchbase/sync_gateway/issues/324
-			Once this issue has been resolved, the above simple implementation should be reinstated.
+				The following is the workaround for	https://github.com/couchbase/sync_gateway/issues/324
+				Once this issue has been resolved, the above simple implementation should be reinstated.
 
-			*/
-			var req = {
-				db: that.config.connection.bucket,
-				path: id,
-				method: 'GET'
-			};
-			if (options.allRevisions) {
-				req.qs = { open_revs: 'all' };
+				*/
+				var req = {
+					db: that.config.connection.bucket,
+					path: id,
+					method: 'GET'
+				};
+				if (options.allRevisions) {
+					req.qs = { open_revs: 'all' };
+				}
+				that.engine.request(req, getDocCallback(id, callback));
 			}
-			that.engine.request(req, parseResult);
 		}
 	};
 	this.configType(function(err, configType) {
@@ -434,25 +539,18 @@ Couchlike.prototype.getRevisions = function(id, callback) {
 
 Couchlike.prototype.doSet = function(options, document, callback) {
 	if (!options) { options = {}; }
-	function parseResult(err, result) {
-		if (err) { return callback(err); }
-		if (result &amp;&amp; result.cas) { document._rev = result.cas; }
-		else if (result &amp;&amp; result.rev) { document._rev = result.rev; }
-		if (callback) { callback(err, document); }
-	}
-
 	var that = this;
 	var methods = {
 		couchDB: function() {
-			that.engine.bucket.insert(document, parseResult);
+			that.engine.bucket.insert(document, setDocCallback(document, callback));
 		},
 		pouchDB: function() {
 			var pouchOptions = options.force ? { new_edits: false } : {};
-			that.engine.put(document, pouchOptions, parseResult);
+			that.engine.put(document, pouchOptions, setDocCallback(document, callback));
 		},
 		couchbaseSyncGateway: function() {
 			/*
-			that.engine.bucket.insert(document, document._id, parseResult);
+			that.engine.bucket.insert(document, document._id, setDocCallback(document, callback));
 
 			The following is the workaround for	https://github.com/couchbase/sync_gateway/issues/324
 			Once this issue has been resolved, the above simple implementation should be reinstated.
@@ -503,29 +601,30 @@ Couchlike.prototype.force = function(document, callback) {
  */
 const BULK_THRESHOLD = 1;
 Couchlike.prototype.bulkGet = function(documentIds, callback) {
-	if (!documentIds || documentIds.length === 0) { return callback(null, { rows: [], total_rows: 0 }); }
-	function parseResult(err, result) {
-		if (callback) { callback(err, result); }
-	}
-
 	var that = this;
+	var isCouchbase = this.couchbaseBucket ? true : false;
+	if (!documentIds || documentIds.length === 0) { return callback(null, { rows: [], total_rows: 0 }); }
 	var methods = {
 		couchDB: function() {
-			that.engine.bucket.fetch({keys: documentIds}, parseResult);
+			that.engine.bucket.fetch({keys: documentIds}, getBulkCallback(isCouchbase, callback));
 		},
 		pouchDB: function() {
-			that.engine.allDocs({keys: documentIds, include_docs: true}, parseResult);
+			that.engine.allDocs({keys: documentIds, include_docs: true}, getBulkCallback(isCouchbase, callback));
 		},
 		couchbaseSyncGateway: function() {
 			if (documentIds.length > BULK_THRESHOLD) {
-				that.engine.bucket.fetch({keys: documentIds}, parseResult);
+				if (that.couchbaseBucket) {
+					that.couchbaseBucket.getMulti(documentIds, getBulkCallback(isCouchbase, callback));
+				} else {
+					that.engine.bucket.fetch({keys: documentIds}, getBulkCallback(isCouchbase, callback));
+				}
 			} else {
 				async.mapLimit(documentIds, BULK_THRESHOLD, that.get.bind(that), function(err, rows) {
 					var result = {
 						rows: rows.map(function(item) { return { doc: item }; } ),
 						total_rows: rows.length
 					};
-					parseResult(err, result);
+					getBulkCallback(isCouchbase, callback)(err, result);
 				});
 			}
 		}
@@ -546,17 +645,13 @@ Couchlike.prototype.bulkGet = function(documentIds, callback) {
  * TODO
  */
 Couchlike.prototype.bulkSet = function(documents, callback) {
-	function parseResult(err, result) {
-		if (callback) { callback(err, result); }
-	}
-
 	var that = this;
 	var methods = {
 		couchDB: function() {
-			that.engine.bucket.bulk({docs: documents}, parseResult);
+			that.engine.bucket.bulk({docs: documents}, simpleResponseCallback(callback));
 		},
 		pouchDB: function() {
-			that.engine.bulkDocs(documents, parseResult);
+			that.engine.bulkDocs(documents, simpleResponseCallback(callback));
 		},
 		couchbaseSyncGateway: function() {
 			var req = {
@@ -565,7 +660,7 @@ Couchlike.prototype.bulkSet = function(documents, callback) {
 				body: {docs: documents},
 				method: 'POST'
 			};
-			that.engine.request(req, parseResult);
+			that.engine.request(req, simpleResponseCallback(callback));
 		}
 	};
 	this.configType(function(err, configType) {
@@ -584,10 +679,6 @@ Couchlike.prototype.bulkSet = function(documents, callback) {
  * TODO
  */
 Couchlike.prototype.remove = function(id, callback) {
-	function parseResult(err, result) {
-		if (callback) { callback(err); }
-	}
-
 	var that = this;
 	var methods = {
 		couchDB: function() {
@@ -595,7 +686,7 @@ Couchlike.prototype.remove = function(id, callback) {
 				if (err) {
 					if (callback) { callback(err, result); }
 				}
-				else { that.engine.bucket.destroy(result._id, result._rev, parseResult); }
+				else { that.engine.bucket.destroy(result._id, result._rev, swallowResponseCallback(callback)); }
 			});
 		},
 		pouchDB: function() {
@@ -603,7 +694,7 @@ Couchlike.prototype.remove = function(id, callback) {
 				if (err) {
 					if (callback) { callback(err, result); }
 				}
-				else { that.engine.remove(result, parseResult); }
+				else { that.engine.remove(result, swallowResponseCallback(callback)); }
 			});
 		},
 		couchbaseSyncGateway: function() {
@@ -611,7 +702,7 @@ Couchlike.prototype.remove = function(id, callback) {
 				if (err) {
 					if (callback) { callback(err, result); }
 				}
-				else { that.engine.bucket.destroy(result._id, result._rev, parseResult); }
+				else { that.engine.bucket.destroy(result._id, result._rev, swallowResponseCallback(callback)); }
 			});
 		}
 	};
@@ -654,7 +745,7 @@ exports.PouchDB = PouchDB;
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.2</a> on Fri Oct 06 2017 10:35:44 GMT+1100 (AEDT)
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.4.2</a> on Tue Oct 17 2017 11:17:17 GMT+1100 (AEDT)
 </footer>
 
 <script> prettyPrint(); </script>
