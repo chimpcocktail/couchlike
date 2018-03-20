@@ -1,6 +1,11 @@
 couchlike Version History
 ================================
 
+v 0.5.1
+---------------
+
+* Extra workaround for https://github.com/couchbase/sync_gateway/issues/844 in sync gateway 1.5
+
 v 0.5.0
 ---------------
 
