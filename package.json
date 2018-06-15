@@ -14,28 +14,27 @@
 		"test": "./node_modules/.bin/mocha"
 	},
 	"dependencies": {
-    	"agentkeepalive": "3.1.x",
-    	"async": "1.5.x",
-		"nconf": "0.8.x",
-		"nano": "6.2.x",
-		"pouchdb": "6.0.x",
-		"couchbase": "2.4.x"
+		"agentkeepalive": "^3.1.0",
+		"async": "^1.5.2",
+		"couchbase": "^2.4.6",
+		"nano": "^6.4.4",
+		"pouchdb": "^6.4.3"
 	},
 	"devDependencies": {
-		"mocha": "2.5.x",
-		"should": "9.0.x",
-		"mocha-jshint": "2.3.x",
-		"grunt": "1.0.x",
-		"grunt-jsdoc": "2.1.x"
+		"grunt": "^1.0.3",
+		"grunt-jsdoc": "^2.2.1",
+		"mocha": "^5.2.0",
+		"mocha-jshint": "^2.3.1",
+		"should": "^9.0.2"
 	},
 	"license": "ISC",
 	"engines": {
-    	"node": "6.2.x"
+		"node": "10.4.x"
 	},
 	"contributors": [
 		{
-		  "name": "Steven Barlow",
-		  "email": "stemail23@gmail.com"
+			"name": "Steven Barlow",
+			"email": "stemail23@gmail.com"
 		}
 	],
 	"readmeFilename": "README.md"

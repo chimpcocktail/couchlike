@@ -1,8 +1,6 @@
 /* jshint expr:true */
 /* global emit */
 
-var nconf = require("nconf").argv().env();
-var isCiEnvironment = nconf.get('CI');
 var should = require("should");
 var couchlike = require('./../../lib/couchlike.js');
 
@@ -594,7 +592,7 @@ function testWithConfig(configSpec) {
 }
 
 var configs = {};
-if (nconf.get('TEST_COUCHDB')) {
+if (process.env.TEST_COUCHDB) {
 	configs.couchDB = {
 		type: couchlike.engineType.couchDB,
 		connection: {
@@ -608,7 +606,7 @@ if (nconf.get('TEST_COUCHDB')) {
 		}
 	};
 }
-if (nconf.get('TEST_POUCHDB')) {
+if (process.env.TEST_POUCHDB) {
 	configs.pouchDB = {
 		type: couchlike.engineType.pouchDB,
 		connection: {
@@ -619,7 +617,7 @@ if (nconf.get('TEST_POUCHDB')) {
 		}
 	};
 }
-if (nconf.get('TEST_COUCHBASESYNCGATEWAY')) {
+if (process.env.TEST_COUCHBASESYNCGATEWAY) {
 	configs.couchbaseSyncGateway = {
 		type: couchlike.engineType.couchbaseSyncGateway,
 		connection: {
